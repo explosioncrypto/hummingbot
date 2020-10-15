@@ -25,3 +25,4 @@ def get_mid_price(exchange: str, trading_pair: str) -> Optional[Decimal]:
         mid_price = module.get_mid_price(trading_pair)
 
     return mid_price
+

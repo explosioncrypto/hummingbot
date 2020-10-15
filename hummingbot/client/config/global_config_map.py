@@ -108,6 +108,13 @@ main_config_map = {
                   required_if=lambda: False,
                   type_str="json",
                   ),
+    "vitex_vite_address":
+        ConfigVar(key="vitex_vite_address",
+                  prompt="Enter your Vite address >>> ",
+                  type_str="str",
+                  required_if=using_exchange("vitex"),
+                  is_secure=False,
+                  is_connect_key=True),
     "celo_address":
         ConfigVar(key="celo_address",
                   prompt="Enter your Celo account address >>> ",
