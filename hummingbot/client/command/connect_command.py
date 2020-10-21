@@ -24,8 +24,6 @@ class ConnectCommand:
             safe_ensure_future(self.connect_ethereum())
         elif option == "celo":
             safe_ensure_future(self.connect_celo())
-        elif option == "vitex":
-            safe_ensure_future(self.connect_vitex())
         else:
             safe_ensure_future(self.connect_exchange(option))
 
@@ -100,16 +98,6 @@ class ConnectCommand:
                 if celo_address is not None and Security.encrypted_file_exists("celo_password"):
                     keys_added = "Yes"
                     err_msg = await self.validate_n_connect_celo(True)
-                    if err_msg is not None:
-                        failed_msgs[option] = err_msg
-                    else:
-                        keys_confirmed = 'Yes'
-            elif option == "vitex":
-                vite_address = global_config_map["vitex_vite_address"].value
-                api_keys = (await Security.api_keys(option)).values()
-                if vite_address is not None and len(api_keys) > 0:
-                    keys_added = "Yes"
-                    err_msg = err_msgs.get(option)
                     if err_msg is not None:
                         failed_msgs[option] = err_msg
                     else:
@@ -204,23 +192,3 @@ class ConnectCommand:
             return err_msg
         err_msg = CeloCLI.unlock_account(celo_address, celo_password)
         return err_msg
-
-    async def connect_vitex(self,  # type: HummingbotApplication
-                            ):
-        self.placeholder_mode = True
-        self.app.hide_input = True
-        vite_address = global_config_map["vitex_vite_address"].value
-        to_connect = True
-        if vite_address is not None:
-            answer = await self.app.prompt(prompt=f"Would you like to replace your existing Vite address "
-                                                  f"{vite_address} (Yes/No)? >>> ")
-            if answer.lower() not in ("yes", "y"):
-                to_connect = False
-        if to_connect:
-            await self.prompt_a_config(global_config_map["vitex_vite_address"])
-            await self.prompt_a_config(global_config_map["vitex_api_key"])
-            await self.prompt_a_config(global_config_map["vitex_secret_key"])
-            save_to_yml(GLOBAL_CONFIG_PATH, global_config_map)
-        self.placeholder_mode = False
-        self.app.hide_input = False
-        self.app.change_prompt(prompt=">>> ")

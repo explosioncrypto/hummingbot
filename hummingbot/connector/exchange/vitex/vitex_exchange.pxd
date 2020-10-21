@@ -2,7 +2,7 @@ from hummingbot.connector.exchange_base cimport ExchangeBase
 from hummingbot.core.data_type.transaction_tracker cimport TransactionTracker
 
 
-cdef class VitexMarket(ExchangeBase):
+cdef class VitexExchange(ExchangeBase):
     cdef:
         str _vite_address
         object _async_scheduler

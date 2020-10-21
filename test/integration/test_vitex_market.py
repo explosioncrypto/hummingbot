@@ -19,7 +19,7 @@ from hummingbot.core.event.events import (
     TradeType,
     TradeFee,
 )
-from hummingbot.connector.exchange.vitex.vitex_market import VitexMarket
+from hummingbot.connector.exchange.vitex.vitex_exchange import VitexExchange
 from hummingbot.market.market_base import OrderType
 
 sys.path.insert(0, realpath(join(__file__, "../../../")))
@@ -37,23 +37,23 @@ class VitexMarketUnitTest(unittest.TestCase):
         MarketEvent.OrderCancelled,
     ]
 
-    market: VitexMarket
+    exchange: VitexExchange
     market_logger: EventLogger
     stack: contextlib.ExitStack
 
     @classmethod
     def setUpClass(cls):
-        cls.market: VitexMarket = VitexMarket(
+        cls.exchange: VitexExchange = VitexExchange(
             conf.vitex_vite_address,
             conf.vitex_api_key,
             conf.vitex_secret_key,
             10.0,
             trading_pairs=["VITE-BTC.000"],
         )
-        print("Initializing Vitex market... ")
+        print("Initializing Vitex Exchange... ")
         cls.ev_loop: asyncio.BaseEventLoop = asyncio.get_event_loop()
         cls.clock: Clock = Clock(ClockMode.REALTIME)
-        cls.clock.add_iterator(cls.market)
+        cls.clock.add_iterator(cls.exchange)
         cls.stack = contextlib.ExitStack()
         cls._clock = cls.stack.enter_context(cls.clock)
         cls.ev_loop.run_until_complete(cls.wait_til_ready())
@@ -69,7 +69,7 @@ class VitexMarketUnitTest(unittest.TestCase):
         while True:
             now = time.time()
             next_iteration = now // 1.0 + 1
-            if cls.market.ready:
+            if cls.exchange.ready:
                 break
             else:
                 await cls._clock.run_til(next_iteration)
@@ -84,11 +84,11 @@ class VitexMarketUnitTest(unittest.TestCase):
 
         self.market_logger = EventLogger()
         for event_tag in self.market_events:
-            self.market.add_listener(event_tag, self.market_logger)
+            self.exchange.add_listener(event_tag, self.market_logger)
 
     def tearDown(self):
         for event_tag in self.market_events:
-            self.market.remove_listener(event_tag, self.market_logger)
+            self.exchange.remove_listener(event_tag, self.market_logger)
         self.market_logger = None
 
     async def run_parallel_async(self, *tasks):
@@ -106,41 +106,41 @@ class VitexMarketUnitTest(unittest.TestCase):
     # ====================================================
 
     def test_get_fee(self):
-        limit_trade_fee: TradeFee = self.market.get_fee("VX", "VITE", OrderType.LIMIT, TradeType.BUY, 100, 10)
+        limit_trade_fee: TradeFee = self.exchange.get_fee("VX", "VITE", OrderType.LIMIT, TradeType.BUY, 100, 10)
         print(limit_trade_fee)
         self.assertLess(limit_trade_fee.percent, 0.01)
 
     def test_get_balances(self):
-        balances = self.market.get_all_balances()
+        balances = self.exchange.get_all_balances()
         print(balances)
         self.assertGreaterEqual((balances["BTC.000"]), 0)
         self.assertGreaterEqual((balances["VITE"]), 0)
 
     def test_get_available_balances(self):
-        balance = self.market.get_available_balance("BTC.000")
+        balance = self.exchange.get_available_balance("BTC.000")
         self.assertGreaterEqual(balance, 0)
 
     def test_limit_orders(self):
-        orders = self.market.limit_orders
+        orders = self.exchange.limit_orders
         self.assertGreaterEqual(len(orders), 0)
 
     def test_cancel_order(self):
         trading_pair = "VITE-BTC.000"
-        bid_price: Decimal = self.market.get_price(trading_pair, True)
+        bid_price: Decimal = self.exchange.get_price(trading_pair, True)
         print("best bid price is", bid_price)
         amount = Decimal("187.23")
         price = bid_price * Decimal(1.5)
         # Intentionally setting price far away from best ask
-        order_id = self.market.sell(trading_pair, amount, OrderType.LIMIT, price)
+        order_id = self.exchange.sell(trading_pair, amount, OrderType.LIMIT, price)
         print("sell order id", order_id)
         self.run_parallel(asyncio.sleep(5.0))
         print("try to cancel order", order_id)
-        self.market.cancel(trading_pair, order_id)
+        self.exchange.cancel(trading_pair, order_id)
         [order_cancelled_event] = self.run_parallel(self.market_logger.wait_for(OrderCancelledEvent))
         order_cancelled_event: OrderCancelledEvent = order_cancelled_event
 
         self.run_parallel(asyncio.sleep(6.0))
-        self.assertEqual(0, len(self.market.limit_orders))
+        self.assertEqual(0, len(self.exchange.limit_orders))
         self.assertEqual(order_id, order_cancelled_event.order_id)
 
 

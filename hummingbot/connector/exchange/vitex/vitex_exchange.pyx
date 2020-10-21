@@ -55,9 +55,9 @@ s_decimal_NaN = Decimal("NaN")
 
 cdef class VitexMarketTransactionTracker(TransactionTracker):
     cdef:
-        VitexMarket _owner
+        VitexExchange _owner
 
-    def __init__(self, owner: VitexMarket):
+    def __init__(self, owner: VitexExchange):
         super().__init__()
         self._owner = owner
 
@@ -65,7 +65,7 @@ cdef class VitexMarketTransactionTracker(TransactionTracker):
         TransactionTracker.c_did_timeout_tx(self, tx_id)
         self._owner.c_did_timeout_tx(tx_id)
 
-cdef class VitexMarket(ExchangeBase):
+cdef class VitexExchange(ExchangeBase):
     MARKET_BUY_ORDER_COMPLETED_EVENT_TAG = MarketEvent.BuyOrderCompleted.value
     MARKET_SELL_ORDER_COMPLETED_EVENT_TAG = MarketEvent.SellOrderCompleted.value
     MARKET_ORDER_CANCELLED_EVENT_TAG = MarketEvent.OrderCancelled.value
@@ -85,7 +85,7 @@ cdef class VitexMarket(ExchangeBase):
         return hm_logger
 
     def __init__(self,
-                 vite_address: str,
+                 vitex_vite_address: str,
                  vitex_api_key: str,
                  vitex_secret_key: str,
                  poll_interval: float = 5.0,
@@ -96,7 +96,7 @@ cdef class VitexMarket(ExchangeBase):
 
         self._async_scheduler = AsyncCallScheduler(call_interval=0.5)
         self._ev_loop = asyncio.get_event_loop()
-        self._vite_address = vite_address
+        self._vite_address = vitex_vite_address
         self._auth = VitexAuth(api_key=vitex_api_key, secret_key=vitex_secret_key)
         self._vitex_api = VitexAPI(self._auth)
         self._in_flight_orders = {}
@@ -116,7 +116,7 @@ cdef class VitexMarket(ExchangeBase):
         self._trading_rules_polling_task = None
         self._tx_tracker = VitexMarketTransactionTracker(self)
         self._user_stream_event_listener_task = None
-        self._user_stream_tracker = VitexUserStreamTracker(vite_address=vite_address,
+        self._user_stream_tracker = VitexUserStreamTracker(vite_address=vitex_vite_address,
                                                            trading_pairs=trading_pairs)
 
     @property

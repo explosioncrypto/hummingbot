@@ -3,6 +3,7 @@ import sys
 import asyncio
 import logging
 import unittest
+from decimal import Decimal
 from os.path import join, realpath
 from hummingbot.connector.exchange.vitex.vitex_api import VitexAPI
 from typing import (
@@ -33,6 +34,12 @@ class VitexAPIUnitTest(unittest.TestCase):
 
     def setUp(self):
         pass
+
+    def test_format_params(self):
+        params = {"s": "abc", "i": 3, "d": Decimal('5.1E-7')}
+        VitexAPI.format_params(params)
+        formatted = {"s": "abc", "i": 3, "d": "0.00000051"}
+        self.assertEqual(params, formatted)
 
     def test_symbol_conversion(self):
         vitex_symbol = "BTC-000"

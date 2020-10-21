@@ -81,6 +81,17 @@ class VitexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         order_book.apply_snapshot(snapshot_msg.bids, snapshot_msg.asks, snapshot_msg.update_id)
         return order_book
 
+    @staticmethod
+    async def fetch_trading_pairs() -> List[str]:
+        try:
+            path = "/markets"
+            trading_pairs = await VitexAPI.api_get(path)
+            return [VitexAPI.convert_from_exchange_trading_pair(item["symbol"]) for item in trading_pairs]
+        except Exception:
+            # Do nothing if the request fails -- there will be no autocomplete for ViteX trading pairs
+            pass
+        return []
+
     async def _inner_messages(self,
                               ws: websockets.WebSocketClientProtocol) -> AsyncIterable[Any]:
         # Terminate the recv() loop as soon as the next message timed out, so the outer loop can reconnect.

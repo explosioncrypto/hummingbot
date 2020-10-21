@@ -70,6 +70,39 @@ class VitexAPI:
     def shared_client(self, client: aiohttp.ClientSession):
         self._shared_client = client
 
+    @staticmethod
+    def format_params(params: Optional[Dict[str, Any]]):
+        if params is not None:
+            for k, v in params.items():
+                if isinstance(v, Decimal):
+                    params[k] = "{0:f}".format(v)  # format decimal: Decimal('5.1E-7') -> '0.00000051'
+                elif isinstance(v, str) or isinstance(v, int):
+                    pass  # string or int remains as it is
+                else:
+                    params[k] = str(v)  # format other types as string
+
+    @staticmethod
+    async def api_get(
+            path: str,
+            params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        full_url = f"{API_REST_ENDPOINT}{path}"
+
+        # Format params
+        VitexAPI.format_params(params)
+
+        async with aiohttp.ClientSession() as client:
+            async with client.get(full_url, timeout=API_CALL_TIMEOUT, params=params) as response:
+                if response.status != 200:
+                    raise IOError(f"Error getting data from {path}. HTTP status is {response.status}.")
+                try:
+                    parsed_response = await response.json()
+                    if parsed_response.get("code") != 0:
+                        raise VitexAPIError(parsed_response)
+                except Exception:
+                    raise IOError(f"Error parsing data from {path}.")
+
+            return parsed_response.get("data")
+
     async def api_request(
             self,
             http_method: str,
@@ -84,14 +117,7 @@ class VitexAPI:
         full_url = f"{API_REST_ENDPOINT}{path}"
 
         # Format params
-        if params is not None:
-            for k, v in params.items():
-                if isinstance(v, Decimal):
-                    params[k] = "{0:f}".format(v)  # format decimal: Decimal('5.1E-7') -> '0.00000051'
-                elif isinstance(v, str) or isinstance(v, int):
-                    pass  # string or int remains as it is
-                else:
-                    params[k] = str(v)  # format other types as string
+        VitexAPI.format_params(params)
 
         # Sign requests
         if secure:
