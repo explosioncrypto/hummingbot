@@ -26,3 +26,4 @@ Connectors are packages of code that link Hummingbot's internal trading algorith
 * [Kraken](/connectors/kraken)
 * [KuCoin](/connectors/kucoin)
 * [Radar Relay](/connectors/radar-relay)
+* [ViteX](/connectors/vitex)
