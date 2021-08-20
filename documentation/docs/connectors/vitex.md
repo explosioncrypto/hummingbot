@@ -24,7 +24,7 @@ API keys are stored locally for the operation of the Hummingbot client only. At 
 
 This article below in ViteX documentation shows step-by-step instructions on how to create API keys in ViteX exchange.
 
-* [Private API Authorization](https://vite.wiki/dex/api/dex-apis.html#private-api-authorization)
+* [Private API Authorization](https://docs.vite.org/go-vite/dex/api/dex-apis.html#private-api-authorization)
 
 !!! warning
     It's highly recommended to enable API authorization ONLY on specific trading pairs for current Hummingbot strategies.
