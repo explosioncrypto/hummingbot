@@ -1,36 +1,30 @@
 from __future__ import unicode_literals
-import six
-from collections import deque
-from typing import (
-    List,
-    Deque,
-)
 
+import re
+from collections import deque
+from typing import Callable, Deque, Dict, List, Tuple
+
+import six
 from prompt_toolkit.auto_suggest import DynamicAutoSuggest
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import DynamicCompleter
 from prompt_toolkit.document import Document
-from prompt_toolkit.widgets.toolbars import SearchToolbar
-from prompt_toolkit.filters import (
-    to_filter,
-    Condition,
-    is_true,
-    has_focus,
-    is_done,
-)
-from prompt_toolkit.layout.containers import Window
+from prompt_toolkit.filters import (Condition, has_focus, is_done, is_true,
+                                    to_filter)
+from prompt_toolkit.formatted_text.base import StyleAndTextTuples
+from prompt_toolkit.layout.containers import Window, WindowAlign
 from prompt_toolkit.layout.controls import BufferControl
-from prompt_toolkit.layout.margins import (
-    ScrollbarMargin,
-    NumberedMargin,
-)
-from prompt_toolkit.layout.processors import (
-    PasswordProcessor,
-    ConditionalProcessor,
-    BeforeInput,
-    AppendAutoSuggestion,
-)
+from prompt_toolkit.layout.margins import NumberedMargin, ScrollbarMargin
+from prompt_toolkit.layout.processors import (AppendAutoSuggestion,
+                                              BeforeInput,
+                                              ConditionalProcessor,
+                                              PasswordProcessor)
 from prompt_toolkit.lexers import DynamicLexer
+from prompt_toolkit.lexers.base import Lexer
+from prompt_toolkit.widgets.toolbars import SearchToolbar
+
+from hummingbot.client.ui.style import load_style, text_ui_style
+from hummingbot.client.config.global_config_map import color_config_map
 
 
 class CustomBuffer(Buffer):
@@ -45,6 +39,63 @@ class CustomBuffer(Buffer):
                 self.reset()
 
 
+class FormattedTextLexer(Lexer):
+
+    PROMPT_TEXT = ">>> "
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.html_tag_css_style_map: Dict[str, str] = {style: css for style, css in load_style().style_rules}
+        self.html_tag_css_style_map.update({
+            style: config.value
+            for style, config in color_config_map.items()
+            if style not in self.html_tag_css_style_map.keys()
+        })
+
+        # Maps specific text to its corresponding UI styles
+        self.text_style_tag_map: Dict[str, str] = text_ui_style
+
+    def get_css_style(self, tag: str) -> str:
+        return self.html_tag_css_style_map.get(tag, "")
+
+    def lex_document(self, document: Document) -> Callable[[int], StyleAndTextTuples]:
+        lines = document.lines
+
+        def get_line(lineno: int) -> StyleAndTextTuples:
+            "Return the tokens for the given line."
+            try:
+                current_line = lines[lineno]
+
+                # Apply styling to command prompt
+                if current_line.startswith(self.PROMPT_TEXT):
+                    return [(self.get_css_style("primary-label"), current_line)]
+
+                matched_indexes: List[Tuple[int, int, str]] = [(match.start(), match.end(), style)
+                                                               for special_word, style in self.text_style_tag_map.items()
+                                                               for match in list(re.finditer(special_word, current_line))
+                                                               ]
+                if len(matched_indexes) == 0:
+                    return [("", current_line)]
+
+                previous_idx = 0
+                line_fragments = []
+                for start_idx, end_idx, style in matched_indexes:
+                    line_fragments.extend([
+                        ("", current_line[previous_idx:start_idx]),
+                        (self.get_css_style("output-pane"), current_line[start_idx:start_idx + 2]),
+                        (self.get_css_style(style), current_line[start_idx + 2:end_idx])
+                    ])
+                    previous_idx = end_idx
+
+                line_fragments.append(("", current_line[previous_idx:]))
+
+                return line_fragments
+            except IndexError:
+                return []
+
+        return get_line
+
+
 class CustomTextArea:
     def __init__(self, text='', multiline=True, password=False,
                  lexer=None, auto_suggest=None, completer=None,
@@ -54,7 +105,7 @@ class CustomTextArea:
                  dont_extend_height=False, dont_extend_width=False,
                  line_numbers=False, get_line_prefix=None, scrollbar=False,
                  style='', search_field=None, preview_search=True, prompt='',
-                 input_processors=None, max_line_count=1000, initial_text=""):
+                 input_processors=None, max_line_count=1000, initial_text="", align=WindowAlign.LEFT):
         assert isinstance(text, six.text_type)
         assert search_field is None or isinstance(search_field, SearchToolbar)
 
@@ -90,15 +141,15 @@ class CustomTextArea:
             buffer=self.buffer,
             lexer=DynamicLexer(lambda: self.lexer),
             input_processors=[
-                                 ConditionalProcessor(
-                                     AppendAutoSuggestion(),
-                                     has_focus(self.buffer) & ~is_done),
-                                 ConditionalProcessor(
-                                     processor=PasswordProcessor(),
-                                     filter=to_filter(password)
-                                 ),
-                                 BeforeInput(prompt, style='class:text-area.prompt'),
-                             ] + input_processors,
+                ConditionalProcessor(
+                    AppendAutoSuggestion(),
+                    has_focus(self.buffer) & ~is_done),
+                ConditionalProcessor(
+                    processor=PasswordProcessor(),
+                    filter=to_filter(password)
+                ),
+                BeforeInput(prompt, style='class:text-area.prompt'),
+            ] + input_processors,
             search_buffer_control=search_control,
             preview_search=preview_search,
             focusable=focusable,
@@ -129,7 +180,8 @@ class CustomTextArea:
             wrap_lines=Condition(lambda: is_true(self.wrap_lines)),
             left_margins=left_margins,
             right_margins=right_margins,
-            get_line_prefix=get_line_prefix)
+            get_line_prefix=get_line_prefix,
+            align=align)
 
         self.log_lines: Deque[str] = deque()
         self.log(initial_text)
@@ -170,12 +222,17 @@ class CustomTextArea:
     def __pt_container__(self):
         return self.window
 
-    def log(self, text: str):
+    def log(self, text: str, save_log: bool = True, silent: bool = False):
         # Getting the max width of the window area
         if self.window.render_info is None:
             max_width = 100
         else:
             max_width = self.window.render_info.window_width - 2
+
+        # remove simple formatting tags used by telegram
+        repls = (('<b>', ''), ('</b>', ''), ('<pre>', ''), ('</pre>', ''))
+        for r in repls:
+            text = text.replace(*r)
 
         # Split the string into multiple lines if there is a "\n" or if the string exceeds max window width
         # This operation should not be too expensive because only the newly added lines are processed
@@ -187,8 +244,12 @@ class CustomTextArea:
                 line = line[max_width:]
             new_lines.append(line)
 
-        self.log_lines.extend(new_lines)
-        while len(self.log_lines) > self.max_line_count:
-            self.log_lines.popleft()
-        new_text: str = "\n".join(self.log_lines)
-        self.buffer.document = Document(text=new_text, cursor_position=len(new_text))
+        if save_log:
+            self.log_lines.extend(new_lines)
+            while len(self.log_lines) > self.max_line_count:
+                self.log_lines.popleft()
+            new_text: str = "\n".join(self.log_lines)
+        else:
+            new_text: str = "\n".join(new_lines)
+        if not silent:
+            self.buffer.document = Document(text=new_text, cursor_position=len(new_text))

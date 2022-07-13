@@ -18,6 +18,7 @@ from hummingbot.client.ui.scroll_handlers import (
     scroll_up,
 )
 from hummingbot.core.utils.async_utils import safe_ensure_future
+from hummingbot.client.ui.style import reset_style
 
 
 def load_key_bindings(hb) -> KeyBindings:
@@ -37,7 +38,7 @@ def load_key_bindings(hb) -> KeyBindings:
         hb.app.change_prompt(prompt=">>> ")
         hb.placeholder_mode = False
         hb.app.hide_input = False
-        
+
     @bindings.add("c-s")
     def status(event):
         hb.app.log("\n[CTRL + S] Status")
@@ -92,5 +93,25 @@ def load_key_bindings(hb) -> KeyBindings:
         scroll_up(event, hb.app.output_field.window, hb.app.output_field.buffer)
         event.app.layout.current_window = hb.app.input_field.window
         event.app.layout.focus = hb.app.input_field.buffer
+
+    @bindings.add("escape")
+    def stop_live_update(event):
+        hb.app.live_updates = False
+
+    @bindings.add("c-r")
+    def do_reset_style(event):
+        hb.app.app.style = reset_style()
+
+    @bindings.add("c-t")
+    def toggle_logs(event):
+        hb.app.toggle_right_pane()
+
+    @bindings.add('c-b')
+    def do_tab_navigate_left(event):
+        hb.app.tab_navigate_left()
+
+    @bindings.add('c-n')
+    def do_tab_navigate_right(event):
+        hb.app.tab_navigate_right()
 
     return bindings

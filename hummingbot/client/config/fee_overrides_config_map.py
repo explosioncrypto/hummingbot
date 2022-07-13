@@ -1,41 +1,32 @@
+from typing import Dict
+
+from hummingbot.client.config.config_methods import new_fee_config_var
 from hummingbot.client.config.config_var import ConfigVar
-from hummingbot.client.config.config_validators import validate_decimal
-from decimal import Decimal
+from hummingbot.client.settings import AllConnectorSettings
+
+fee_overrides_config_map: Dict[str, ConfigVar] = {}
 
 
-def new_fee_config_var(key):
-    return ConfigVar(key=key,
-                     prompt=None,
-                     required_if=lambda x: x is not None,
-                     type_str="decimal",
-                     validator=lambda v: validate_decimal(v, Decimal(-0.1), Decimal(0.1)))
+def fee_overrides_dict() -> Dict[str, ConfigVar]:
+    all_configs: Dict[str, ConfigVar] = {}
+    for name in AllConnectorSettings.get_connector_settings().keys():
+        all_configs.update({
+            f"{name}_percent_fee_token": new_fee_config_var(f"{name}_percent_fee_token", type_str="str"),
+            f"{name}_maker_percent_fee": new_fee_config_var(f"{name}_maker_percent_fee", type_str="decimal"),
+            f"{name}_taker_percent_fee": new_fee_config_var(f"{name}_taker_percent_fee", type_str="decimal"),
+            f"{name}_buy_percent_fee_deducted_from_returns": new_fee_config_var(
+                f"{name}_buy_percent_fee_deducted_from_returns", type_str="bool"
+            ),
+            f"{name}_maker_fixed_fees": new_fee_config_var(f"{name}_maker_fixed_fees", type_str="list"),
+            f"{name}_taker_fixed_fees": new_fee_config_var(f"{name}_taker_fixed_fees", type_str="list"),
+        })
+    return all_configs
 
 
-# trade fees configs are not prompted during setup process
+def init_fee_overrides_config():
+    global fee_overrides_config_map
+    fee_overrides_config_map.clear()
+    fee_overrides_config_map.update(fee_overrides_dict())
 
-fee_overrides_config_map = {
-    "binance_maker_fee": new_fee_config_var("binance_maker_fee"),
-    "binance_taker_fee": new_fee_config_var("binance_taker_fee"),
-    "coinbase_pro_maker_fee": new_fee_config_var("coinbase_pro_maker_fee"),
-    "coinbase_pro_taker_fee": new_fee_config_var("coinbase_pro_taker_fee"),
-    "huobi_maker_fee": new_fee_config_var("huobi_maker_fee"),
-    "huobi_taker_fee": new_fee_config_var("huobi_taker_fee"),
-    "liquid_maker_fee": new_fee_config_var("liquid_maker_fee"),
-    "liquid_taker_fee": new_fee_config_var("liquid_taker_fee"),
-    "bittrex_maker_fee": new_fee_config_var("bittrex_maker_fee"),
-    "bittrex_taker_fee": new_fee_config_var("bittrex_taker_fee"),
-    "kucoin_maker_fee": new_fee_config_var("kucoin_maker_fee"),
-    "kucoin_taker_fee": new_fee_config_var("kucoin_taker_fee"),
-    "kraken_maker_fee": new_fee_config_var("kraken_maker_fee"),
-    "kraken_taker_fee": new_fee_config_var("kraken_taker_fee"),
-    "eterbase_maker_fee": new_fee_config_var("eterbase_maker_fee"),
-    "eterbase_taker_fee": new_fee_config_var("eterbase_taker_fee"),
-    "crypto_com_maker_fee": new_fee_config_var("crypto_com_maker_fee"),
-    "crypto_com_taker_fee": new_fee_config_var("crypto_com_taker_fee"),
-    "dolomite_maker_fee_amount": new_fee_config_var("dolomite_maker_fee_amount"),
-    "dolomite_taker_fee_amount": new_fee_config_var("dolomite_taker_fee_amount"),
-    "bamboo_relay_maker_fee_amount": new_fee_config_var("bamboo_relay_maker_fee_amount"),
-    "bamboo_relay_taker_fee_amount": new_fee_config_var("bamboo_relay_taker_fee_amount"),
-    "radar_relay_maker_fee_amount": new_fee_config_var("radar_relay_maker_fee_amount"),
-    "radar_relay_taker_fee_amount": new_fee_config_var("radar_relay_taker_fee_amount")
-}
+
+init_fee_overrides_config()

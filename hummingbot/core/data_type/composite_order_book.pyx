@@ -2,18 +2,14 @@
 # distutils: sources=hummingbot/core/cpp/OrderBookEntry.cpp
 
 from typing import Iterator
+
+from cython.operator cimport address as ref, dereference as deref, postincrement as inc
+from hummingbot.core.data_type.OrderBookEntry cimport OrderBookEntry
 from libcpp.set cimport set
-from cython.operator cimport (
-    postincrement as inc,
-    dereference as deref,
-    address as ref
-)
 from libcpp.vector cimport vector
 
-from hummingbot.core.event.events import TradeType
+from hummingbot.core.data_type.common import TradeType
 from hummingbot.core.data_type.order_book_row import OrderBookRow
-from hummingbot.core.data_type.OrderBookEntry cimport OrderBookEntry
-
 
 cdef class CompositeOrderBook(OrderBook):
     """
@@ -42,7 +38,7 @@ cdef class CompositeOrderBook(OrderBook):
             OrderBookEntry entry
 
         price = order_fill_event.price
-        amount = order_fill_event.amount
+        amount = float(order_fill_event.amount)
         timestamp = order_fill_event.timestamp
 
         if order_fill_event.trade_type is TradeType.BUY:
@@ -130,7 +126,6 @@ cdef class CompositeOrderBook(OrderBook):
             inc(order_it)
 
         self._traded_order_book.c_apply_diffs(cpp_bids_changes, cpp_asks_changes, self._last_diff_uid)
-
 
     def ask_entries(self) -> Iterator[OrderBookRow]:
         cdef:

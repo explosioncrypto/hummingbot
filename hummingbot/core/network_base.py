@@ -1,18 +1,12 @@
 import asyncio
-from enum import Enum
 import logging
 from typing import Optional
 from hummingbot.logger import HummingbotLogger
 from hummingbot.core.utils.async_utils import safe_ensure_future
+from hummingbot.core.network_iterator import NetworkStatus
 
 NaN = float("nan")
 nb_logger = None
-
-
-class NetworkStatus(Enum):
-    STOPPED = 0
-    NOT_CONNECTED = 1
-    CONNECTED = 2
 
 
 class NetworkBase:
@@ -92,7 +86,7 @@ class NetworkBase:
             except asyncio.CancelledError:
                 raise
             except asyncio.TimeoutError:
-                self.logger().debug(f"Check network call has timed out. Network status is not connected.")
+                self.logger().debug("Check network call has timed out. Network status is not connected.")
                 new_status = NetworkStatus.NOT_CONNECTED
             except Exception:
                 self.logger().error("Unexpected error while checking for network status.", exc_info=True)

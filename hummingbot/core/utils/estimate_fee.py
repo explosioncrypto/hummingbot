@@ -1,55 +1,105 @@
 from decimal import Decimal
-from hummingbot.core.event.events import TradeFee
-from hummingbot.client.config.fee_overrides_config_map import fee_overrides_config_map
+from typing import List, Optional
+import warnings
 
-default_cex_estimate = {
-    # exchange: [maker_fee, taker_fee]
-    "binance": [0.1, 0.1],
-    "bittrex": [0.25, 0.25],
-    "coinbase_pro": [0.5, 0.5],
-    "huobi": [0.2, 0.2],
-    "kraken": [0.16, 0.26],
-    "kucoin": [0.1, 0.1],
-    "liquid": [0.1, 0.1],
-    "eterbase": [0.35, 0.35],
-    "crypto_com": [0.1, 0.1]
-}
-
-default_dex_estimate = {
-    "bamboo_relay": [0, 0.00001],
-    "radar_relay": [0, 0.00001],
-    "dolomite": [0, 0.00001]
-}
+from hummingbot.client.config.trade_fee_schema_loader import TradeFeeSchemaLoader
+from hummingbot.core.data_type.trade_fee import (
+    TradeFeeBase,
+    TokenAmount,
+    TradeFeeSchema
+)
+from hummingbot.core.data_type.common import OrderType, PositionAction, TradeType
 
 
-def estimate_fee(exchange: str, is_maker: bool) -> Decimal:
-    override_config_name_suffix = "_maker_fee" if is_maker else "_taker_fee"
-    override_config_name = exchange + override_config_name_suffix
-    if exchange in default_dex_estimate:
-        override_config_name += "_amount"
-    s_decimal_0 = Decimal(0)
-    s_decimal_100 = Decimal(100)
+def build_trade_fee(
+    exchange: str,
+    is_maker: bool,
+    base_currency: str,
+    quote_currency: str,
+    order_type: OrderType,
+    order_side: TradeType,
+    amount: Decimal,
+    price: Decimal = Decimal("NaN"),
+    extra_flat_fees: Optional[List[TokenAmount]] = None,
+) -> TradeFeeBase:
+    """
+    WARNING: Do not use this method for order sizing. Use the `BudgetChecker` instead.
 
-    if is_maker:
-        if exchange in default_cex_estimate:
-            if fee_overrides_config_map[override_config_name].value is not None:
-                return TradeFee(percent=fee_overrides_config_map[override_config_name].value / s_decimal_100)
-            else:
-                return TradeFee(percent=Decimal(default_cex_estimate[exchange][0]) / s_decimal_100)
-        else:
-            if fee_overrides_config_map[override_config_name].value is not None:
-                return TradeFee(percent=s_decimal_0, flat_fees=[("ETH", fee_overrides_config_map[override_config_name].value)])
-            else:
-                return TradeFee(percent=s_decimal_0, flat_fees=[("ETH", Decimal(default_dex_estimate[exchange][0]))])
+    Uses the exchange's `TradeFeeSchema` to build a `TradeFee`, given the trade parameters.
+    """
+    trade_fee_schema: TradeFeeSchema = TradeFeeSchemaLoader.configured_schema_for_exchange(exchange_name=exchange)
+    fee_percent: Decimal = (
+        trade_fee_schema.maker_percent_fee_decimal
+        if is_maker
+        else trade_fee_schema.taker_percent_fee_decimal
+    )
+    fixed_fees: List[TokenAmount] = (
+        trade_fee_schema.maker_fixed_fees
+        if is_maker
+        else trade_fee_schema.taker_fixed_fees
+    ).copy()
+    if extra_flat_fees is not None and len(extra_flat_fees) > 0:
+        fixed_fees = fixed_fees + extra_flat_fees
+    trade_fee: TradeFeeBase = TradeFeeBase.new_spot_fee(
+        fee_schema=trade_fee_schema,
+        trade_type=order_side,
+        percent=fee_percent,
+        percent_token=trade_fee_schema.percent_fee_token,
+        flat_fees=fixed_fees
+    )
+    return trade_fee
 
-    else:
-        if exchange in default_cex_estimate:
-            if fee_overrides_config_map[override_config_name].value is not None:
-                return TradeFee(percent=fee_overrides_config_map[override_config_name].value / s_decimal_100)
-            else:
-                return TradeFee(percent=Decimal(default_cex_estimate[exchange][1]) / s_decimal_100)
-        else:
-            if fee_overrides_config_map[override_config_name].value is not None:
-                return TradeFee(percent=s_decimal_0, flat_fees=[("ETH", fee_overrides_config_map[override_config_name].value)])
-            else:
-                return TradeFee(percent=s_decimal_0, flat_fees=[("ETH", Decimal(default_dex_estimate[exchange][1]))])
+
+def build_perpetual_trade_fee(
+    exchange: str,
+    is_maker: bool,
+    position_action: PositionAction,
+    base_currency: str,
+    quote_currency: str,
+    order_type: OrderType,
+    order_side: TradeType,
+    amount: Decimal,
+    price: Decimal = Decimal("NaN"),
+) -> TradeFeeBase:
+    """
+    WARNING: Do not use this method for order sizing. Use the `BudgetChecker` instead.
+
+    Uses the exchange's `TradeFeeSchema` to build a `TradeFee`, given the trade parameters.
+    """
+    trade_fee_schema = TradeFeeSchemaLoader.configured_schema_for_exchange(exchange_name=exchange)
+    percent = trade_fee_schema.maker_percent_fee_decimal if is_maker else trade_fee_schema.taker_percent_fee_decimal
+    fixed_fees = trade_fee_schema.maker_fixed_fees if is_maker else trade_fee_schema.taker_fixed_fees
+    trade_fee = TradeFeeBase.new_perpetual_fee(
+        fee_schema=trade_fee_schema,
+        position_action=position_action,
+        percent=percent,
+        percent_token=trade_fee_schema.percent_fee_token,
+        flat_fees=fixed_fees)
+    return trade_fee
+
+
+def estimate_fee(exchange: str, is_maker: bool) -> TradeFeeBase:
+    """
+    WARNING: This method is deprecated and remains only for backward compatibility.
+    Use `build_trade_fee` and `build_perpetual_trade_fee` instead.
+
+    Estimate the fee of a transaction on any blockchain.
+    exchange is the name of the exchange to query.
+    is_maker if true look at fee from maker side, otherwise from taker side.
+    """
+    warnings.warn(
+        "The 'estimate_fee' method is deprecated, use 'build_trade_fee' and 'build_perpetual_trade_fee' instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    trade_fee = build_trade_fee(
+        exchange,
+        is_maker,
+        base_currency="",
+        quote_currency="",
+        order_type=OrderType.LIMIT,
+        order_side=TradeType.BUY,
+        amount=Decimal("0"),
+        price=Decimal("0"),
+    )
+    return trade_fee

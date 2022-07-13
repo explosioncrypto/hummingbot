@@ -1,25 +1,22 @@
+import asyncio
+import time
 from decimal import Decimal
-from typing import (
-    Dict,
-    List,
-    Tuple
-)
-from hummingbot.core.data_type.cancellation_result import CancellationResult
-from hummingbot.core.event.events import (
-    MarketEvent,
-    OrderType,
-    TradeType
-)
-from hummingbot.core.event.event_logger import EventLogger
-from hummingbot.core.network_iterator import NetworkIterator
-from hummingbot.connector.in_flight_order_base import InFlightOrderBase
-from hummingbot.core.event.events import OrderFilledEvent
-from hummingbot.client.config.global_config_map import global_config_map
-from hummingbot.core.utils.estimate_fee import estimate_fee
+from typing import Dict, List, Set, Tuple
 
-NaN = float("nan")
-s_decimal_NaN = Decimal("nan")
-s_decimal_0 = Decimal(0)
+from hummingbot.client.config.global_config_map import global_config_map
+from hummingbot.client.config.trade_fee_schema_loader import TradeFeeSchemaLoader
+from hummingbot.connector.connector_metrics_collector import TradeVolumeMetricCollector
+from hummingbot.connector.in_flight_order_base import InFlightOrderBase
+from hummingbot.connector.utils import split_hb_trading_pair, TradeFillOrderDetails
+from hummingbot.connector.constants import NaN, s_decimal_NaN, s_decimal_0
+from hummingbot.core.clock cimport Clock
+from hummingbot.core.data_type.cancellation_result import CancellationResult
+from hummingbot.core.data_type.common import OrderType, TradeType
+from hummingbot.core.event.event_logger import EventLogger
+from hummingbot.core.event.events import MarketEvent, OrderFilledEvent
+from hummingbot.core.network_iterator import NetworkIterator
+from hummingbot.core.rate_oracle.rate_oracle import RateOracle
+from hummingbot.core.utils.estimate_fee import estimate_fee
 
 
 cdef class ConnectorBase(NetworkIterator):
@@ -29,18 +26,25 @@ cdef class ConnectorBase(NetworkIterator):
         MarketEvent.SellOrderCompleted,
         MarketEvent.WithdrawAsset,
         MarketEvent.OrderCancelled,
-        MarketEvent.TransactionFailure,
         MarketEvent.OrderFilled,
+        MarketEvent.OrderExpired,
+        MarketEvent.OrderFailure,
+        MarketEvent.TransactionFailure,
         MarketEvent.BuyOrderCreated,
         MarketEvent.SellOrderCreated,
-        MarketEvent.OrderExpired
+        MarketEvent.FundingPaymentCompleted,
+        MarketEvent.RangePositionCreated,
+        MarketEvent.RangePositionRemoved,
+        MarketEvent.RangePositionUpdated,
+        MarketEvent.RangePositionFailure,
+        MarketEvent.RangePositionInitiated,
     ]
 
     def __init__(self):
         super().__init__()
 
-        self._event_reporter = EventReporter(event_source=self.name)
-        self._event_logger = EventLogger(event_source=self.name)
+        self._event_reporter = EventReporter(event_source=self.display_name)
+        self._event_logger = EventLogger(event_source=self.display_name)
         for event_tag in self.MARKET_EVENTS:
             self.c_add_listener(event_tag.value, self._event_reporter)
             self.c_add_listener(event_tag.value, self._event_logger)
@@ -54,6 +58,12 @@ cdef class ConnectorBase(NetworkIterator):
         # for _in_flight_orders_snapshot and _in_flight_orders_snapshot_timestamp when the update user balances.
         self._in_flight_orders_snapshot = {}  # Dict[order_id:str, InFlightOrderBase]
         self._in_flight_orders_snapshot_timestamp = 0.0
+        self._current_trade_fills = set()
+        self._exchange_order_ids = dict()
+        self._trade_fee_schema = None
+        self._trade_volume_metric_collector = TradeVolumeMetricCollector.from_configuration(
+            connector=self,
+            rate_provider=RateOracle.get_instance())
 
     @property
     def real_time_balance_update(self) -> bool:
@@ -89,7 +99,7 @@ cdef class ConnectorBase(NetworkIterator):
 
     @staticmethod
     def split_trading_pair(trading_pair: str) -> Tuple[str, str]:
-        return tuple(trading_pair.split('-'))
+        return split_hb_trading_pair(trading_pair)
 
     def in_flight_asset_balances(self, in_flight_orders: Dict[str, InFlightOrderBase]) -> Dict[str, Decimal]:
         """
@@ -120,7 +130,7 @@ cdef class ConnectorBase(NetworkIterator):
 
     def order_filled_balances(self, starting_timestamp = 0) -> Dict[str, Decimal]:
         """
-        Calculates total asset balance changes from filled orders since the time stamp
+        Calculates total asset balance changes from filled orders since the timestamp
         For BUY filled order, the quote balance goes down while the base balance goes up, and for SELL order, it's the
         opposite. This does not account for fee.
         :param starting_timestamp: The starting timestamp to include filter order filled events
@@ -205,13 +215,22 @@ cdef class ConnectorBase(NetworkIterator):
     cdef c_tick(self, double timestamp):
         NetworkIterator.c_tick(self, timestamp)
         self.tick(timestamp)
+        self._trade_volume_metric_collector.process_tick(timestamp)
+
+    cdef c_start(self, Clock clock, double timestamp):
+        NetworkIterator.c_start(self, clock, timestamp)
+        self._trade_volume_metric_collector.start()
+
+    cdef c_stop(self, Clock clock):
+        NetworkIterator.c_stop(self, clock)
+        self._trade_volume_metric_collector.stop()
 
     async def cancel_all(self, timeout_seconds: float) -> List[CancellationResult]:
         """
         Cancels all in-flight orders and waits for cancellation results.
         Used by bot's top level stop and exit commands (cancelling outstanding orders on exit)
         :param timeout_seconds: The timeout at which the operation will be canceled.
-        :returns List of CancellationResult which indicates whether each order is successfully cancelled.
+        :returns List of CancellationResult which indicates whether each order is successfully canceled.
         """
         raise NotImplementedError
 
@@ -321,7 +340,7 @@ cdef class ConnectorBase(NetworkIterator):
 
     def get_available_balance(self, currency: str) -> Decimal:
         """
-        Return availalbe balance for a given currency. The function accounts for balance changes since the last time
+        Return available balance for a given currency. The function accounts for balance changes since the last time
         the snapshot was taken if no real time balance update. The function applied limit if configured.
         :param currency: The currency (token) name
         :returns: Balance available for trading for the specified currency
@@ -370,7 +389,7 @@ cdef class ConnectorBase(NetworkIterator):
         if price.is_nan():
             return price
         price_quantum = self.c_get_order_price_quantum(trading_pair, price)
-        return round(price / price_quantum) * price_quantum
+        return (price // price_quantum) * price_quantum
 
     def quantize_order_price(self, trading_pair: str, price: Decimal) -> Decimal:
         """
@@ -387,3 +406,81 @@ cdef class ConnectorBase(NetworkIterator):
         Applies trading rule to quantize order amount.
         """
         return self.c_quantize_order_amount(trading_pair, amount)
+
+    async def get_quote_price(self, trading_pair: str, is_buy: bool, amount: Decimal) -> Decimal:
+        """
+        Returns a quote price (or exchange rate) for a given amount, like asking how much does it cost to buy 4 apples?
+        :param trading_pair: The market trading pair
+        :param is_buy: True for buy order, False for sell order
+        :param amount: The order amount
+        :return The quoted price
+        """
+        raise NotImplementedError
+
+    async def get_order_price(self, trading_pair: str, is_buy: bool, amount: Decimal) -> Decimal:
+        """
+        Returns a price required for order submission, this price could differ from the quote price (e.g. for
+        an exchange with order book).
+        :param trading_pair: The market trading pair
+        :param is_buy: True for buy order, False for sell order
+        :param amount: The order amount
+        :return The price to specify in an order.
+        """
+        raise NotImplementedError
+
+    @property
+    def available_balances(self) -> Dict[str, Decimal]:
+        return self._account_available_balances
+
+    def add_trade_fills_from_market_recorder(self, current_trade_fills: Set[TradeFillOrderDetails]):
+        """
+        Gets updates from new records in TradeFill table. This is used in method is_confirmed_new_order_filled_event
+        """
+        self._current_trade_fills.update(current_trade_fills)
+
+    def add_exchange_order_ids_from_market_recorder(self, current_exchange_order_ids: Dict[str, str]):
+        """
+        Gets updates from new orders in Order table. This is used in method connector _history_reconciliation
+        """
+        self._exchange_order_ids.update(current_exchange_order_ids)
+
+    def is_confirmed_new_order_filled_event(self, exchange_trade_id: str, exchange_order_id: str, trading_pair: str):
+        """
+        Returns True if order to be filled is not already present in TradeFill entries.
+        This is intended to avoid duplicated order fills in local DB.
+        """
+        # Assume (market, exchange_trade_id, trading_pair) are unique. Also order has to be recorded in Order table
+        return (not TradeFillOrderDetails(self.display_name, exchange_trade_id, trading_pair) in self._current_trade_fills) and \
+               (exchange_order_id in set(self._exchange_order_ids.keys()))
+
+    def trade_fee_schema(self):
+        if self._trade_fee_schema is None:
+            self._trade_fee_schema = TradeFeeSchemaLoader.configured_schema_for_exchange(exchange_name=self.name)
+        return self._trade_fee_schema
+
+    async def all_trading_pairs(self) -> List[str]:
+        """
+        List of all trading pairs supported by the connector
+
+        :return: List of trading pair symbols in the Hummingbot format
+        """
+        raise NotImplementedError
+
+    async def _update_balances(self):
+        """
+        Update local balances requesting the latest information from the exchange.
+        """
+        raise NotImplementedError
+
+    def _time(self) -> float:
+        """
+        Method created to enable tests to mock the machine time
+        :return: The machine time (time.time())
+        """
+        return time.time()
+
+    async def _sleep(self, delay: float):
+        """
+        Method created to enable tests to prevent processes from sleeping
+        """
+        await asyncio.sleep(delay)
