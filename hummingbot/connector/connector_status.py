@@ -1,50 +1,42 @@
 #!/usr/bin/env python
 
 connector_status = {
-    'ascend_ex': 'yellow',
+    'ascend_ex': 'green',
     'balancer': 'green',
     'beaxy': 'green',
     'binance': 'green',
     'binance_perpetual': 'yellow',
     'binance_perpetual_testnet': 'yellow',
-    'binance_us': 'green',
+    'binance_us': 'yellow',
     'bitfinex': 'yellow',
-    'bitmart': 'green',
     'bittrex': 'yellow',
     'blocktane': 'yellow',
-    'bybit_perpetual': 'yellow',
-    'bybit_perpetual_testnet': 'yellow',
-    'celo': 'yellow',
+    'celo': 'green',
     'coinbase_pro': 'yellow',
     'coinzoom': 'yellow',
     'crypto_com': 'green',
     'digifinex': "yellow",
-    'dydx_perpetual': 'green',
+    'dydx': 'green',
+    'dydx_perpetual': 'yellow',
     'ethereum': 'red',
     'ftx': 'green',
-    'gate_io': 'green',
     'hitbtc': 'green',
     'huobi': 'green',
-    'kraken': 'yellow',
+    'kraken': 'green',
     'kucoin': 'yellow',
     'k2': 'red',
-    'liquid': 'yellow',
+    'liquid': 'green',
     'loopring': 'yellow',
-    'mexc': 'yellow',
-    'ndax': 'yellow',
-    'ndax_testnet': 'yellow',
     'okex': 'yellow',
     'perpetual_finance': 'yellow',
     'probit': 'yellow',
     'probit_kr': 'yellow',
     'terra': 'green',
-    'uniswap': 'yellow',
-    'uniswap_v3': 'yellow',
-    'wazirx': 'yellow',
-    'vitex': 'green'
+    'uniswap': 'green'
 }
 
 warning_messages = {
+    'eterbase': 'Hack investigation and security audit is ongoing for Eterbase. Trading is currently disabled.'
 }
 
 
@@ -59,5 +51,5 @@ def get_connector_status(connector_name: str) -> str:
     if connector_name not in connector_status.keys():
         status = "UNKNOWN"
     else:
-        return f"&c{connector_status[connector_name].upper()}"
+        return connector_status[connector_name].upper()
     return status

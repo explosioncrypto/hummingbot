@@ -9,7 +9,8 @@ from hummingbot.client.config.config_validators import (
 )
 from hummingbot.client.settings import (
     required_exchanges,
-    AllConnectorSettings,
+    EXAMPLE_ASSETS,
+    EXAMPLE_PAIRS,
 )
 
 
@@ -19,16 +20,16 @@ def exchange_on_validated(value: str) -> None:
 
 def trading_pair_prompt():
     exchange = dev_0_hello_world_config_map.get("exchange").value
-    example = AllConnectorSettings.get_example_pairs().get(exchange)
+    example = EXAMPLE_PAIRS.get(exchange)
     return "Enter the trading pair you would like to trade on %s%s >>> " \
            % (exchange, f" (e.g. {example})" if example else "")
 
 
 def asset_prompt():
-    exchange = dev_0_hello_world_config_map.get("exchange").value
-    example = AllConnectorSettings.get_example_assets().get(exchange)
+    trading_pair = dev_0_hello_world_config_map.get("trading_pair").value
+    example = EXAMPLE_ASSETS.get(trading_pair)
     return "Enter a single token to fetch its balance on %s%s >>> " \
-           % (exchange, f" (e.g. {example})" if example else "")
+           % (trading_pair, f" (e.g. {example})" if example else "")
 
 
 def validate_exchange_trading_pair(value: str) -> Optional[str]:

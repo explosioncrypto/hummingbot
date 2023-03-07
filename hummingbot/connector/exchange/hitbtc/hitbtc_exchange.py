@@ -1,58 +1,56 @@
-import aiohttp
-import asyncio
-import math
-import time
 import logging
-
-from async_timeout import timeout
-from decimal import Decimal
 from typing import (
-    Any,
-    AsyncIterable,
     Dict,
     List,
     Optional,
+    Any,
+    AsyncIterable,
 )
+from decimal import Decimal
+import asyncio
+import aiohttp
+import math
+import time
+from async_timeout import timeout
 
+from hummingbot.core.network_iterator import NetworkStatus
+from hummingbot.logger import HummingbotLogger
+from hummingbot.core.clock import Clock
+from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.connector.trading_rule import TradingRule
+from hummingbot.core.data_type.cancellation_result import CancellationResult
+from hummingbot.core.data_type.order_book import OrderBook
+from hummingbot.core.data_type.limit_order import LimitOrder
+from hummingbot.core.event.events import (
+    MarketEvent,
+    BuyOrderCompletedEvent,
+    SellOrderCompletedEvent,
+    OrderFilledEvent,
+    OrderCancelledEvent,
+    BuyOrderCreatedEvent,
+    SellOrderCreatedEvent,
+    MarketOrderFailureEvent,
+    OrderType,
+    TradeType,
+    TradeFee
+)
 from hummingbot.connector.exchange_base import ExchangeBase
-from hummingbot.connector.exchange.hitbtc.hitbtc_api_order_book_data_source import HitbtcAPIOrderBookDataSource
-from hummingbot.connector.exchange.hitbtc.hitbtc_auth import HitbtcAuth
-from hummingbot.connector.exchange.hitbtc.hitbtc_constants import Constants
-from hummingbot.connector.exchange.hitbtc.hitbtc_in_flight_order import HitbtcInFlightOrder
 from hummingbot.connector.exchange.hitbtc.hitbtc_order_book_tracker import HitbtcOrderBookTracker
+from hummingbot.connector.exchange.hitbtc.hitbtc_user_stream_tracker import HitbtcUserStreamTracker
+from hummingbot.connector.exchange.hitbtc.hitbtc_auth import HitbtcAuth
+from hummingbot.connector.exchange.hitbtc.hitbtc_in_flight_order import HitbtcInFlightOrder
 from hummingbot.connector.exchange.hitbtc.hitbtc_utils import (
-    aiohttp_response_with_errors,
+    convert_from_exchange_trading_pair,
+    convert_to_exchange_trading_pair,
+    translate_asset,
     get_new_client_order_id,
-    HitbtcAPIError,
+    aiohttp_response_with_errors,
     retry_sleep_time,
     str_date_to_ts,
-    translate_asset,
+    HitbtcAPIError,
 )
-from hummingbot.connector.exchange.hitbtc.hitbtc_user_stream_tracker import HitbtcUserStreamTracker
-from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.core.clock import Clock
-from hummingbot.core.data_type.cancellation_result import CancellationResult
+from hummingbot.connector.exchange.hitbtc.hitbtc_constants import Constants
 from hummingbot.core.data_type.common import OpenOrder
-from hummingbot.core.data_type.limit_order import LimitOrder
-from hummingbot.core.data_type.order_book import OrderBook
-from hummingbot.core.event.events import (
-    BuyOrderCompletedEvent,
-    BuyOrderCreatedEvent,
-    MarketEvent,
-    MarketOrderFailureEvent,
-    OrderCancelledEvent,
-    OrderFilledEvent,
-    OrderType,
-    SellOrderCompletedEvent,
-    SellOrderCreatedEvent,
-    TradeFee,
-    TradeType,
-)
-from hummingbot.core.network_iterator import NetworkStatus
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
-from hummingbot.logger import HummingbotLogger
-
-
 ctce_logger = None
 s_decimal_NaN = Decimal("nan")
 
@@ -265,9 +263,9 @@ class HitbtcExchange(ExchangeBase):
     async def _update_trading_rules(self):
         symbols_info = await self._api_request("GET", endpoint=Constants.ENDPOINT['SYMBOL'])
         self._trading_rules.clear()
-        self._trading_rules = await self._format_trading_rules(symbols_info)
+        self._trading_rules = self._format_trading_rules(symbols_info)
 
-    async def _format_trading_rules(self, symbols_info: Dict[str, Any]) -> Dict[str, TradingRule]:
+    def _format_trading_rules(self, symbols_info: Dict[str, Any]) -> Dict[str, TradingRule]:
         """
         Converts json API response into a dictionary of trading rules.
         :param symbols_info: The json API response
@@ -291,7 +289,7 @@ class HitbtcExchange(ExchangeBase):
         result = {}
         for rule in symbols_info:
             try:
-                trading_pair = await HitbtcAPIOrderBookDataSource.trading_pair_associated_to_exchange_symbol(rule["id"])
+                trading_pair = convert_from_exchange_trading_pair(rule["id"])
                 price_step = Decimal(str(rule["tickSize"]))
                 size_step = Decimal(str(rule["quantityIncrement"]))
                 result[trading_pair] = TradingRule(trading_pair,
@@ -432,8 +430,7 @@ class HitbtcExchange(ExchangeBase):
             raise ValueError(f"Buy order amount {amount} is lower than the minimum order size "
                              f"{trading_rule.min_order_size}.")
         order_type_str = order_type.name.lower().split("_")[0]
-        symbol = await HitbtcAPIOrderBookDataSource.exchange_symbol_associated_to_pair(trading_pair)
-        api_params = {"symbol": symbol,
+        api_params = {"symbol": convert_to_exchange_trading_pair(trading_pair),
                       "side": trade_type.name.lower(),
                       "type": order_type_str,
                       "price": f"{price:f}",
@@ -864,12 +861,10 @@ class HitbtcExchange(ExchangeBase):
             if order["type"] != OrderType.LIMIT.name.lower():
                 self.logger().info(f"Unsupported order type found: {order['type']}")
                 continue
-            trading_pair = await HitbtcAPIOrderBookDataSource.trading_pair_associated_to_exchange_symbol(
-                order["symbol"])
             ret_val.append(
                 OpenOrder(
                     client_order_id=order["clientOrderId"],
-                    trading_pair=trading_pair,
+                    trading_pair=convert_from_exchange_trading_pair(order["symbol"]),
                     price=Decimal(str(order["price"])),
                     amount=Decimal(str(order["quantity"])),
                     executed_amount=Decimal(str(order["cumQuantity"])),

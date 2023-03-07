@@ -120,7 +120,8 @@ class DigifinexWebsocket(RequestId):
             return
         except ConnectionClosed:
             return
-        except Exception:
+        except Exception as e:
+            _ = e
             self.logger().exception('digifinex.websocket._messages', stack_info=True)
             raise
         finally:

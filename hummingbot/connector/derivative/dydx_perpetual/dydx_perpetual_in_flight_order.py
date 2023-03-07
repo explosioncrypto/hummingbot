@@ -63,7 +63,7 @@ class DydxPerpetualInFlightOrder(InFlightOrderBase):
 
     @property
     def description(self):
-        return f"{self.order_type.name} {self.trade_type.name}"
+        return f"{str(self.order_type).lower()} {str(self.trade_type).lower()}"
 
     @property
     def amount_remaining(self):

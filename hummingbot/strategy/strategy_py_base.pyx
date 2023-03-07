@@ -1,4 +1,7 @@
+from typing import List
+
 from hummingbot.strategy.strategy_base cimport StrategyBase
+from hummingbot.connector.connector_base import ConnectorBase
 from hummingbot.core.clock import Clock
 from hummingbot.core.clock cimport Clock
 from hummingbot.core.event.events import (
@@ -12,7 +15,8 @@ from hummingbot.core.event.events import (
     SellOrderCompletedEvent,
     FundingPaymentCompletedEvent,
 )
-
+from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
+from hummingbot.strategy.order_tracker import OrderTracker
 
 cdef class StrategyPyBase(StrategyBase):
     def __init__(self):

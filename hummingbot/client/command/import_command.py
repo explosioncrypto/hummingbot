@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 from hummingbot.core.utils.async_utils import safe_ensure_future
@@ -43,13 +42,7 @@ class ImportCommand:
         self.placeholder_mode = False
         self.app.hide_input = False
         self.app.change_prompt(prompt=">>> ")
-        try:
-            all_status_go = await self.status_check_all()
-        except asyncio.TimeoutError:
-            self.strategy_file_name = None
-            self.strategy_name = None
-            raise
-        if all_status_go:
+        if await self.status_check_all():
             self._notify("\nEnter \"start\" to start market making.")
             autofill_import = global_config_map.get("autofill_import").value
             if autofill_import is not None:

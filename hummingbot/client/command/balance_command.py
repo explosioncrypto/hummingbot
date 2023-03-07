@@ -1,5 +1,3 @@
-import asyncio
-
 from hummingbot.client.settings import (
     GLOBAL_CONFIG_PATH,
     ethereum_required_trading_pairs
@@ -11,13 +9,12 @@ from hummingbot.client.config.config_helpers import (
     save_to_yml
 )
 from hummingbot.client.config.config_validators import validate_decimal, validate_exchange
-from hummingbot.connector.other.celo.celo_cli import CeloCLI
+from hummingbot.market.celo.celo_cli import CeloCLI
 from hummingbot.client.performance import PerformanceMetrics
 from hummingbot.core.rate_oracle.rate_oracle import RateOracle
 import pandas as pd
 from decimal import Decimal
 from typing import TYPE_CHECKING, Dict, Optional, List
-import threading
 
 if TYPE_CHECKING:
     from hummingbot.client.hummingbot_application import HummingbotApplication
@@ -33,10 +30,6 @@ class BalanceCommand:
                 option: str = None,
                 args: List[str] = None
                 ):
-        if threading.current_thread() != threading.main_thread():
-            self.ev_loop.call_soon_threadsafe(self.balance, option, args)
-            return
-
         self.app.clear_input()
         if option is None:
             safe_ensure_future(self.show_balances())
@@ -86,14 +79,7 @@ class BalanceCommand:
     async def show_balances(self):
         total_col_name = f'Total ({RateOracle.global_token_symbol})'
         self._notify("Updating balances, please wait...")
-        network_timeout = float(global_config_map["other_commands_timeout"].value)
-        try:
-            all_ex_bals = await asyncio.wait_for(
-                UserBalances.instance().all_balances_all_exchanges(), network_timeout
-            )
-        except asyncio.TimeoutError:
-            self._notify("\nA network error prevented the balances to update. See logs for more details.")
-            raise
+        all_ex_bals = await UserBalances.instance().all_balances_all_exchanges()
         all_ex_avai_bals = UserBalances.instance().all_avai_balances_all_exchanges()
         all_ex_limits: Optional[Dict[str, Dict[str, str]]] = global_config_map["balance_asset_limit"].value
 

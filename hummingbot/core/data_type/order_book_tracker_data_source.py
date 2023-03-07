@@ -71,9 +71,3 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
         Object type in the output queue must be OrderBookMessage
         """
         raise NotImplementedError
-
-    async def _sleep(self, delay):
-        """
-        Function added only to facilitate patching the sleep in unit tests without affecting the asyncio module
-        """
-        await asyncio.sleep(delay)

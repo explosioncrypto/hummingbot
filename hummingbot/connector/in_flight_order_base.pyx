@@ -3,8 +3,7 @@ from decimal import Decimal
 from typing import (
     Any,
     Dict,
-    List,
-    Optional,
+    Optional
 )
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.event.events import (
@@ -14,8 +13,6 @@ from hummingbot.core.event.events import (
 from async_timeout import timeout
 
 s_decimal_0 = Decimal(0)
-
-GET_EX_ORDER_ID_TIMEOUT = 10  # seconds
 
 cdef class InFlightOrderBase:
     def __init__(self,
@@ -83,7 +80,7 @@ cdef class InFlightOrderBase:
 
     async def get_exchange_order_id(self):
         if self.exchange_order_id is None:
-            async with timeout(GET_EX_ORDER_ID_TIMEOUT):
+            async with timeout(10):
                 await self.exchange_order_id_update_event.wait()
         return self.exchange_order_id
 
@@ -113,32 +110,6 @@ cdef class InFlightOrderBase:
             "fee_paid": str(self.fee_paid),
             "last_state": self.last_state
         }
-
-    @classmethod
-    def _instance_creation_parameters_from_json(cls, data: Dict[str, Any]) -> List[Any]:
-        return [
-            data["client_order_id"],
-            data["exchange_order_id"],
-            data["trading_pair"],
-            getattr(OrderType, data["order_type"]),
-            getattr(TradeType, data["trade_type"]),
-            Decimal(data["price"]),
-            Decimal(data["amount"]),
-            data["last_state"]]
-
-    @classmethod
-    def _basic_from_json(cls, data: Dict[str, Any]) -> InFlightOrderBase:
-        """
-        :param data: json data from API
-        :return: formatted InFlightOrder
-        """
-        arguments = cls._instance_creation_parameters_from_json(data)
-        order = cls(*arguments)
-        order.executed_amount_base = Decimal(data["executed_amount_base"])
-        order.executed_amount_quote = Decimal(data["executed_amount_quote"])
-        order.fee_asset = data["fee_asset"]
-        order.fee_paid = Decimal(data["fee_paid"])
-        return order
 
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> InFlightOrderBase:

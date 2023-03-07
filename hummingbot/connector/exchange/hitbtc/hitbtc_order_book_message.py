@@ -1,15 +1,20 @@
+#!/usr/bin/env python
+
 from typing import (
     Dict,
     List,
     Optional,
 )
 
+from hummingbot.core.data_type.order_book_row import OrderBookRow
 from hummingbot.core.data_type.order_book_message import (
     OrderBookMessage,
     OrderBookMessageType,
 )
-from hummingbot.core.data_type.order_book_row import OrderBookRow
 from .hitbtc_constants import Constants
+from .hitbtc_utils import (
+    convert_from_exchange_trading_pair,
+)
 
 
 class HitbtcOrderBookMessage(OrderBookMessage):
@@ -45,7 +50,10 @@ class HitbtcOrderBookMessage(OrderBookMessage):
 
     @property
     def trading_pair(self) -> str:
-        return self.content["trading_pair"]
+        if "trading_pair" in self.content:
+            return self.content["trading_pair"]
+        elif "symbol" in self.content:
+            return convert_from_exchange_trading_pair(self.content["symbol"])
 
     # The `asks` and `bids` properties are only used in the methods below.
     # They are all replaced or unused in this connector:

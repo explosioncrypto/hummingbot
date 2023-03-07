@@ -16,8 +16,11 @@ QUOTE = re.compile(r"^(\w+)(USDC|USDT)$")
 
 # Helper Functions ---
 def split_trading_pair(trading_pair: str) -> Optional[Tuple[str, str]]:
-    m = QUOTE.match(trading_pair)
-    return m.group(1), m.group(2)
+    try:
+        m = QUOTE.match(trading_pair)
+        return m.group(1), m.group(2)
+    except Exception as e:
+        raise e
 
 
 def convert_from_exchange_trading_pair(exchange_trading_pair: str) -> Optional[str]:

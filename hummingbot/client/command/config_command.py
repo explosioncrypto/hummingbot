@@ -20,7 +20,6 @@ from hummingbot.client.config.config_helpers import (
 from hummingbot.client.config.security import Security
 from hummingbot.client.config.config_var import ConfigVar
 from hummingbot.core.utils.async_utils import safe_ensure_future
-from hummingbot.core.utils import map_df_to_str
 from hummingbot.model.inventory_cost import InventoryCost
 from hummingbot.strategy.pure_market_making import (
     PureMarketMakingStrategy
@@ -32,11 +31,12 @@ from hummingbot.user.user_balances import UserBalances
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from hummingbot.client.hummingbot_application import HummingbotApplication
-from hummingbot.client.ui.style import load_style
+
 
 no_restart_pmm_keys_in_percentage = ["bid_spread", "ask_spread", "order_level_spread", "inventory_target_base_pct"]
 no_restart_pmm_keys = ["order_amount", "order_levels", "filled_order_delay", "inventory_skew_enabled", "inventory_range_multiplier"]
-global_configs_to_display = ["autofill_import",
+global_configs_to_display = ["0x_active_cancels",
+                             "autofill_import",
                              "kill_switch_enabled",
                              "kill_switch_rate",
                              "telegram_enabled",
@@ -52,16 +52,7 @@ global_configs_to_display = ["autofill_import",
                              "gateway_api_port",
                              "rate_oracle_source",
                              "global_token",
-                             "global_token_symbol",
-                             "rate_limits_share_pct",
-                             "create_command_timeout",
-                             "other_commands_timeout"]
-color_settings_to_display = ["top-pane",
-                             "bottom-pane",
-                             "output-pane",
-                             "input-pane",
-                             "logs-pane",
-                             "terminal-primary"]
+                             "global_token_symbol"]
 
 
 class ConfigCommand:
@@ -83,21 +74,14 @@ class ConfigCommand:
         columns = ["Key", "  Value"]
         data = [[cv.key, cv.value] for cv in global_config_map.values()
                 if cv.key in global_configs_to_display and not cv.is_secure]
-        df = map_df_to_str(pd.DataFrame(data=data, columns=columns))
+        df = pd.DataFrame(data=data, columns=columns)
         self._notify("\nGlobal Configurations:")
-        lines = ["    " + line for line in df.to_string(index=False, max_colwidth=50).split("\n")]
-        self._notify("\n".join(lines))
-
-        data = [[cv.key, cv.value] for cv in global_config_map.values()
-                if cv.key in color_settings_to_display and not cv.is_secure]
-        df = map_df_to_str(pd.DataFrame(data=data, columns=columns))
-        self._notify("\nColor Settings:")
         lines = ["    " + line for line in df.to_string(index=False, max_colwidth=50).split("\n")]
         self._notify("\n".join(lines))
 
         if self.strategy_name is not None:
             data = [[cv.printable_key or cv.key, cv.value] for cv in self.strategy_config_map.values() if not cv.is_secure]
-            df = map_df_to_str(pd.DataFrame(data=data, columns=columns))
+            df = pd.DataFrame(data=data, columns=columns)
             self._notify("\nStrategy Configurations:")
             lines = ["    " + line for line in df.to_string(index=False, max_colwidth=50).split("\n")]
             self._notify("\n".join(lines))
@@ -172,7 +156,6 @@ class ConfigCommand:
             save_to_yml(file_path, config_map)
             self._notify("\nNew configuration saved:")
             self._notify(f"{key}: {str(config_var.value)}")
-            self.app.app.style = load_style()
             for config in missings:
                 self._notify(f"{config.key}: {str(config.value)}")
             if isinstance(self.strategy, PureMarketMakingStrategy) or \
@@ -251,8 +234,7 @@ class ConfigCommand:
             exchange = config_map["exchange"].value
             market = config_map["market"].value
             base_asset, quote_asset = market.split("-")
-
-            if exchange.endswith("paper_trade"):
+            if global_config_map["paper_trade_enabled"].value:
                 balances = global_config_map["paper_trade_account_balance"].value
             else:
                 balances = await UserBalances.instance().balances(

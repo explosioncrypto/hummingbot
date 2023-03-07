@@ -6,7 +6,7 @@ from hummingbot.client.config.config_validators import (
 )
 from hummingbot.client.settings import (
     required_exchanges,
-    AllConnectorSettings,
+    EXAMPLE_PAIRS,
 )
 from decimal import Decimal
 
@@ -17,7 +17,7 @@ def exchange_on_validated(value: str) -> None:
 
 def market_trading_pair_prompt() -> str:
     exchange = celo_arb_config_map.get("secondary_exchange").value
-    example = AllConnectorSettings.get_example_pairs().get(exchange)
+    example = EXAMPLE_PAIRS.get(exchange)
     return "Enter the token trading pair you would like to trade on %s%s >>> " \
            % (exchange, f" (e.g. {example})" if example else "")
 

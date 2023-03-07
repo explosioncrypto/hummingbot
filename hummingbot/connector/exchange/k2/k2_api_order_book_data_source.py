@@ -108,8 +108,11 @@ class K2APIOrderBookDataSource(OrderBookTrackerDataSource):
                 msg: str = await asyncio.wait_for(ws.recv(), timeout=self.MESSAGE_TIMEOUT)
                 yield msg
         except asyncio.TimeoutError:
-            pong_waiter = await ws.ping()
-            await asyncio.wait_for(pong_waiter, timeout=self.PING_TIMEOUT)
+            try:
+                pong_waiter = await ws.ping()
+                await asyncio.wait_for(pong_waiter, timeout=self.PING_TIMEOUT)
+            except asyncio.TimeoutError:
+                raise
         except websockets.exceptions.ConnectionClosed:
             return
         finally:

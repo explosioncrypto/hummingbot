@@ -115,9 +115,12 @@ class CoinbaseProAPIUserStreamDataSource(UserStreamTrackerDataSource):
                     self._last_recv_time = time.time()
                     yield msg
                 except asyncio.TimeoutError:
-                    pong_waiter = await ws.ping()
-                    self._last_recv_time = time.time()
-                    await asyncio.wait_for(pong_waiter, timeout=self.PING_TIMEOUT)
+                    try:
+                        pong_waiter = await ws.ping()
+                        self._last_recv_time = time.time()
+                        await asyncio.wait_for(pong_waiter, timeout=self.PING_TIMEOUT)
+                    except asyncio.TimeoutError:
+                        raise
         except asyncio.TimeoutError:
             self.logger().warning("WebSocket ping timed out. Going to reconnect...")
             return

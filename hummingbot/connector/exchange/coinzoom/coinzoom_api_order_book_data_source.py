@@ -5,15 +5,6 @@ import time
 import pandas as pd
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
-
-from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
-import hummingbot.connector.exchange.coinzoom.coinzoom_http_utils as http_utils
-from .coinzoom_utils import (
-    convert_to_exchange_trading_pair,
-    convert_from_exchange_trading_pair,
-    CoinzoomAPIError,
-)
-
 from hummingbot.core.data_type.order_book import OrderBook
 from hummingbot.core.data_type.order_book_message import OrderBookMessage
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
@@ -22,6 +13,12 @@ from .coinzoom_constants import Constants
 from .coinzoom_active_order_tracker import CoinzoomActiveOrderTracker
 from .coinzoom_order_book import CoinzoomOrderBook
 from .coinzoom_websocket import CoinzoomWebsocket
+from .coinzoom_utils import (
+    convert_to_exchange_trading_pair,
+    convert_from_exchange_trading_pair,
+    api_call_with_retries,
+    CoinzoomAPIError,
+)
 
 
 class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
@@ -33,33 +30,15 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
             cls._logger = logging.getLogger(__name__)
         return cls._logger
 
-    def __init__(self, throttler: Optional[AsyncThrottler] = None, trading_pairs: List[str] = None):
+    def __init__(self, trading_pairs: List[str] = None):
         super().__init__(trading_pairs)
-        self._throttler: AsyncThrottler = throttler
-        self._throttler = throttler or self._get_throttler_instance()
         self._trading_pairs: List[str] = trading_pairs
         self._snapshot_msg: Dict[str, any] = {}
 
-    def _time(self):
-        """ Function created to enable patching during unit tests execution.
-        :return: current time
-        """
-        return time.time()
-
     @classmethod
-    def _get_throttler_instance(cls) -> AsyncThrottler:
-        throttler = AsyncThrottler(Constants.RATE_LIMITS)
-        return throttler
-
-    @classmethod
-    async def get_last_traded_prices(cls,
-                                     trading_pairs: List[str],
-                                     throttler: Optional[AsyncThrottler] = None) -> Dict[str, Decimal]:
-        throttler = throttler or CoinzoomAPIOrderBookDataSource._get_throttler_instance()
+    async def get_last_traded_prices(cls, trading_pairs: List[str]) -> Dict[str, Decimal]:
         results = {}
-        tickers: List[Dict[Any]] = await http_utils.api_call_with_retries("GET",
-                                                                          Constants.ENDPOINT["TICKER"],
-                                                                          throttler=throttler)
+        tickers: List[Dict[Any]] = await api_call_with_retries("GET", Constants.ENDPOINT["TICKER"])
         for trading_pair in trading_pairs:
             ex_pair: str = convert_to_exchange_trading_pair(trading_pair, True)
             ticker: Dict[Any] = list([tic for symbol, tic in tickers.items() if symbol == ex_pair])[0]
@@ -67,13 +46,9 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
         return results
 
     @staticmethod
-    async def fetch_trading_pairs(throttler: Optional[AsyncThrottler] = None) -> List[str]:
-        throttler = throttler or CoinzoomAPIOrderBookDataSource._get_throttler_instance()
+    async def fetch_trading_pairs() -> List[str]:
         try:
-            symbols: List[Dict[str, Any]] = await http_utils.api_call_with_retries(
-                method="GET",
-                endpoint=Constants.ENDPOINT["SYMBOL"],
-                throttler=throttler)
+            symbols: List[Dict[str, Any]] = await api_call_with_retries("GET", Constants.ENDPOINT["SYMBOL"])
             trading_pairs: List[str] = list([convert_from_exchange_trading_pair(sym["symbol"]) for sym in symbols])
             # Filter out unmatched pairs so nothing breaks
             return [sym for sym in trading_pairs if sym is not None]
@@ -83,19 +58,14 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
         return []
 
     @staticmethod
-    async def get_order_book_data(trading_pair: str, throttler: Optional[AsyncThrottler]) -> Dict[str, any]:
+    async def get_order_book_data(trading_pair: str) -> Dict[str, any]:
         """
         Get whole orderbook
         """
-        throttler = throttler or CoinzoomAPIOrderBookDataSource._get_throttler_instance()
         try:
             ex_pair = convert_to_exchange_trading_pair(trading_pair, True)
             ob_endpoint = Constants.ENDPOINT["ORDER_BOOK"].format(trading_pair=ex_pair)
-            orderbook_response: Dict[Any] = await http_utils.api_call_with_retries(
-                "GET",
-                ob_endpoint,
-                throttler=throttler,
-                limit_id=Constants.REST_ORDERBOOK_LIMIT_ID)
+            orderbook_response: Dict[Any] = await api_call_with_retries("GET", ob_endpoint)
             return orderbook_response
         except CoinzoomAPIError as e:
             err = e.error_payload.get('error', e.error_payload)
@@ -104,7 +74,7 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 f"HTTP status is {e.error_payload['status']}. Error is {err.get('message', str(err))}.")
 
     async def get_new_order_book(self, trading_pair: str) -> OrderBook:
-        snapshot: Dict[str, Any] = await self.get_order_book_data(trading_pair, self._throttler)
+        snapshot: Dict[str, Any] = await self.get_order_book_data(trading_pair)
         snapshot_timestamp: float = float(snapshot['timestamp'])
         snapshot_msg: OrderBookMessage = CoinzoomOrderBook.snapshot_message_from_exchange(
             snapshot,
@@ -122,7 +92,7 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
         """
         while True:
             try:
-                ws = CoinzoomWebsocket(throttler=self._throttler)
+                ws = CoinzoomWebsocket()
                 await ws.connect()
 
                 for pair in self._trading_pairs:
@@ -135,7 +105,6 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
                         continue
 
                     trade: List[Any] = response[Constants.WS_METHODS["TRADES_UPDATE"]]
-                    trade[0] = convert_from_exchange_trading_pair(trade[0])
                     trade_msg: OrderBookMessage = CoinzoomOrderBook.trade_message_from_exchange(trade)
                     output.put_nowait(trade_msg)
 
@@ -154,7 +123,7 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
         """
         while True:
             try:
-                ws = CoinzoomWebsocket(throttler=self._throttler)
+                ws = CoinzoomWebsocket()
                 await ws.connect()
 
                 order_book_methods = [
@@ -184,7 +153,7 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
                     method: str = method_key[0]
                     order_book_data: dict = response
-                    timestamp: int = int(self._time() * 1e3)
+                    timestamp: int = int(time.time() * 1e3)
                     pair: str = convert_from_exchange_trading_pair(response[method])
 
                     order_book_msg_cls = (CoinzoomOrderBook.diff_message_from_exchange
@@ -216,8 +185,7 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
             try:
                 for trading_pair in self._trading_pairs:
                     try:
-                        snapshot: Dict[str, any] = await self.get_order_book_data(trading_pair,
-                                                                                  throttler=self._throttler)
+                        snapshot: Dict[str, any] = await self.get_order_book_data(trading_pair)
                         snapshot_msg: OrderBookMessage = CoinzoomOrderBook.snapshot_message_from_exchange(
                             snapshot,
                             snapshot['timestamp'],
@@ -237,7 +205,7 @@ class CoinzoomAPIOrderBookDataSource(OrderBookTrackerDataSource):
                         await asyncio.sleep(5.0)
                 this_hour: pd.Timestamp = pd.Timestamp.utcnow().replace(minute=0, second=0, microsecond=0)
                 next_hour: pd.Timestamp = this_hour + pd.Timedelta(hours=1)
-                delta: float = next_hour.timestamp() - self._time()
+                delta: float = next_hour.timestamp() - time.time()
                 await asyncio.sleep(delta)
             except asyncio.CancelledError:
                 raise

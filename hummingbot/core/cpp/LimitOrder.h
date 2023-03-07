@@ -12,9 +12,6 @@ class LimitOrder {
     std::string quoteCurrency;
     PyObject *price;
     PyObject *quantity;
-    PyObject *filledQuantity;
-    long creationTimestamp;
-    short int status;
 
     public:
         LimitOrder();
@@ -25,16 +22,6 @@ class LimitOrder {
                    std::string quoteCurrency,
                    PyObject *price,
                    PyObject *quantity);
-        LimitOrder(std::string clientOrderID,
-                   std::string tradingPair,
-                   bool isBuy,
-                   std::string baseCurrency,
-                   std::string quoteCurrency,
-                   PyObject *price,
-                   PyObject *quantity,
-                   PyObject *filledQuantity,
-                   long creationTimestamp,
-                   short int status);
         ~LimitOrder();
         LimitOrder(const LimitOrder &other);
         LimitOrder &operator=(const LimitOrder &other);
@@ -47,9 +34,6 @@ class LimitOrder {
         std::string getQuoteCurrency() const;
         PyObject *getPrice() const;
         PyObject *getQuantity() const;
-        PyObject *getFilledQuantity() const;
-        long getCreationTimestamp() const;
-        short int getStatus() const;
 };
 
 #endif

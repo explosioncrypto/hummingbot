@@ -471,6 +471,8 @@ cdef class BitfinexExchange(ExchangeBase):
 
         try:
             return await self._api_private_fn(http_method, path_url, data)
+        except Exception:
+            raise
         finally:
             self._pending_requests.pop(0)
 
@@ -1149,6 +1151,14 @@ cdef class BitfinexExchange(ExchangeBase):
                 app_warning_msg=f"Failed to cancel all orders on Bitfinex. Check API key and network connection."
             )
             return list(map(lambda client_order_id: CancellationResult(client_order_id, False), client_oids))
+
+    async def get_active_exchange_markets(self) -> pd.DataFrame:
+        """
+        *required
+        Used by the discovery strategy to read order books of all actively trading markets,
+        and find opportunities to profit
+        """
+        return await BitfinexAPIOrderBookDataSource.get_active_exchange_markets()
 
     @property
     def limit_orders(self) -> List[LimitOrder]:

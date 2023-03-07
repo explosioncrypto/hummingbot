@@ -16,7 +16,7 @@ from hummingbot.core.data_type.market_order import MarketOrder
 from hummingbot.strategy.order_tracker import OrderTracker
 from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
 
-from test.mock.mock_paper_exchange import MockPaperExchange
+from hummingsim.backtest.backtest_market import BacktestMarket
 
 
 class OrderTrackerUnitTests(unittest.TestCase):
@@ -54,7 +54,7 @@ class OrderTrackerUnitTests(unittest.TestCase):
             for i in range(20)
         ]
 
-        cls.market: MockPaperExchange = MockPaperExchange()
+        cls.market: BacktestMarket = BacktestMarket()
         cls.market_info: MarketTradingPairTuple = MarketTradingPairTuple(
             cls.market, cls.trading_pair, *cls.trading_pair.split("-")
         )

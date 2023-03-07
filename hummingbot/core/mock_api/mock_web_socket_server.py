@@ -1,12 +1,10 @@
 import asyncio
-from threading import Event, Thread
-from typing import Optional
+from threading import Thread
+import websockets
 import socket
 import errno
+import json
 from urllib.parse import urlparse
-
-import aiohttp
-from aiohttp import web
 
 
 def detect_available_port(starting_port: int) -> int:
@@ -29,9 +27,8 @@ class MockWebSocketServerFactory:
     '''
     Attributes
     ----------
-    _ws_session : The aiohttp client session.
     _orig_ws_connect : web servers connection
-    _ws_servers : web servers dictionary
+     _ws_servers : web servers dictionary
     host : host
     url_host_only : if it's url hosted only
 
@@ -45,8 +42,7 @@ class MockWebSocketServerFactory:
     send_json(url, data, delay=0)
     send_json_threadsafe(url, data, delay=0)
     """
-    _ws_session = aiohttp.ClientSession()
-    _orig_ws_connect = _ws_session.ws_connect
+    _orig_ws_connect = websockets.connect
     _ws_servers = {}
     host = "localhost"
     # url_host_only is used for creating one HummingWSServer to handle all websockets requests and responses for
@@ -80,10 +76,9 @@ class MockWebSocketServerFactory:
         return ws_server
 
     @staticmethod
-    def reroute_ws_connect(client_session_instance, url, **kwargs):
+    def reroute_ws_connect(url, **kwargs):
         """
         Reroute to Humming web server if the server has already connected
-        :param client_session_instance: The ClientSession instance when calling client.ws_connect(url).
         :param url: url
         :return: the web server
         """
@@ -104,8 +99,7 @@ class MockWebSocketServerFactory:
         if delay > 0:
             await asyncio.sleep(delay)
         ws_server = MockWebSocketServerFactory.get_ws_server(url)
-        ws_server.wait_til_websocket_is_initialized()
-        await ws_server.websocket.send_str(message)
+        await ws_server.websocket.send(message)
 
     @staticmethod
     def send_str_threadsafe(url, msg, delay=0):
@@ -130,8 +124,8 @@ class MockWebSocketServerFactory:
             if delay > 0:
                 await asyncio.sleep(delay)
             ws_server = MockWebSocketServerFactory.get_ws_server(url)
-            ws_server.wait_til_websocket_is_initialized()
-            await ws_server.websocket.send_json(data)
+            message = json.dumps(data)
+            await ws_server.websocket.send(message)
         except Exception as e:
             print(f"HummingWsServerFactory Error: {str(e)}")
             raise e
@@ -173,12 +167,9 @@ class MockWebSocketServer:
         self._started: bool = False
         self.host = host
         self.port = port
-        self.websocket: Optional[web.WebSocketResponse] = None
-        self._websocket_initialized_event = Event()
+        self.websocket = None
         self.stock_responses = {}
-        self._app: Optional[web.Application] = None
-        self._runner: Optional[web.AppRunner] = None
-        self._thread: Optional[Thread] = None
+        self._thread: Thread = None
 
     def add_stock_response(self, request, json_response):
         """
@@ -188,20 +179,19 @@ class MockWebSocketServer:
         """
         self.stock_responses[request] = json_response
 
-    def wait_til_websocket_is_initialized(self):
-        self._websocket_initialized_event.wait()
-
-    async def _handler(self, request: web.Request):
+    async def _handler(self, websocket, path):
         """
         Stock the json response
+        :param websocket: web socket request
+               path: json response
+        :return: the web socket
         """
-        self.websocket = web.WebSocketResponse()
-        await self.websocket.prepare(request)
-        self._websocket_initialized_event.set()
+        self.websocket = websocket
         async for msg in self.websocket:
             stock_responses = [v for k, v in self.stock_responses.items() if k in msg]
             if len(stock_responses) > 0:
-                await self.websocket.send_json(stock_responses[0])
+                await websocket.send(json.dumps(stock_responses[0]))
+        print('websocket connection closed')
         return self.websocket
 
     @property
@@ -218,9 +208,7 @@ class MockWebSocketServer:
         """
         self.ev_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.ev_loop)
-        self.ev_loop.run_until_complete(self._runner.setup())
-        site = web.TCPSite(self._runner, self.host, self.port)
-        self.ev_loop.run_until_complete(site.start())
+        asyncio.ensure_future(websockets.serve(self._handler, self.host, self.port))
         self._started = True
         self.ev_loop.run_forever()
 
@@ -237,16 +225,9 @@ class MockWebSocketServer:
         """
         if self.started:
             self.stop()
-        self._app = web.Application()
-        self._app.router.add_get("/", self._handler)
-        self._app.on_shutdown.append(self._on_shutdown)
-        self._runner = web.AppRunner(self._app)
-        self._thread = Thread(target=self._start, daemon=True)
+        self._thread = Thread(target=self._start)
         self._thread.daemon = True
         self._thread.start()
-
-    async def _on_shutdown(self, _: web.Application):
-        await self.websocket.close()
 
     def stop(self):
         """
@@ -254,7 +235,6 @@ class MockWebSocketServer:
         """
         self.port = None
         self._started = False
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self._runner.shutdown())
-        loop.run_until_complete(self._runner.cleanup())
         self.ev_loop.stop()
+        self._thread.join()
+        self.ev_loop.close()

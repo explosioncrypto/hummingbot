@@ -1,5 +1,4 @@
 from decimal import Decimal
-from typing import Optional, Union
 
 from hummingbot.connector.derivative.position import Position
 from hummingbot.core.event.events import (
@@ -18,9 +17,8 @@ class DydxPerpetualPosition(Position):
                  amount: Decimal,
                  leverage: Decimal,
                  is_open: bool = True):
-        amount = abs(amount)
         if position_side == PositionSide.SHORT:
-            amount = -amount
+            amount = (-1) * amount
         super().__init__(
             trading_pair,
             position_side,
@@ -77,19 +75,10 @@ class DydxPerpetualPosition(Position):
         self._leverage = new_total_quote / balance
 
     def update_position(self,
-                        position_side: Optional[str] = None,
-                        unrealized_pnl: Optional[Union[Decimal, str]] = None,
-                        entry_price: Optional[Union[Decimal, str]] = None,
-                        amount: Optional[Union[Decimal, str]] = None,
-                        status: Optional[str] = None):
-        if unrealized_pnl is not None:
-            unrealized_pnl = Decimal(unrealized_pnl)
-        if entry_price is not None:
-            entry_price = Decimal(entry_price)
-        if amount is not None:
-            amount = Decimal(amount)
-        super().update_position(position_side, unrealized_pnl, entry_price, amount)
-        if status == 'CLOSED':
+                        data):
+        if 'unrealizedPnl' in data:
+            self._unrealized_pnl = Decimal(data['unrealizedPnl'])
+        if data['status'] == 'CLOSED':
             self.is_open = False
 
     def update_from_balance(self,

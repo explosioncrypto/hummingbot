@@ -34,14 +34,14 @@ class CryptoComOrderBookMessage(OrderBookMessage):
     @property
     def update_id(self) -> int:
         if self.type in [OrderBookMessageType.DIFF, OrderBookMessageType.SNAPSHOT]:
-            return int(self.timestamp)
+            return int(self.timestamp * 1e3)
         else:
             return -1
 
     @property
     def trade_id(self) -> int:
         if self.type is OrderBookMessageType.TRADE:
-            return int(self.timestamp)
+            return int(self.timestamp * 1e3)
         return -1
 
     @property
@@ -53,21 +53,19 @@ class CryptoComOrderBookMessage(OrderBookMessage):
 
     @property
     def asks(self) -> List[OrderBookRow]:
-        results = [
-            OrderBookRow(float(entry[0]), float(entry[1]), self.update_id)
-            for entry in self.content["asks"]
+        asks = map(self.content["asks"], lambda ask: {"price": ask[0], "amount": ask[1]})
+
+        return [
+            OrderBookRow(float(price), float(amount), self.update_id) for price, amount in asks
         ]
-        sorted(results, key=lambda a: a.price)
-        return results
 
     @property
     def bids(self) -> List[OrderBookRow]:
-        results = [
-            OrderBookRow(float(entry[0]), float(entry[1]), self.update_id)
-            for entry in self.content["bids"]
+        bids = map(self.content["bids"], lambda bid: {"price": bid[0], "amount": bid[1]})
+
+        return [
+            OrderBookRow(float(price), float(amount), self.update_id) for price, amount in bids
         ]
-        sorted(results, key=lambda b: b.price)
-        return results
 
     def __eq__(self, other) -> bool:
         return self.type == other.type and self.timestamp == other.timestamp

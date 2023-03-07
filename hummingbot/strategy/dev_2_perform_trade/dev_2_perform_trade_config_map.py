@@ -2,6 +2,9 @@
 from decimal import Decimal
 from typing import Optional
 
+from hummingbot.client.config.config_helpers import (
+    minimum_order_amount,
+)
 from hummingbot.client.config.config_validators import (
     validate_exchange,
     validate_market_trading_pair,
@@ -9,13 +12,13 @@ from hummingbot.client.config.config_validators import (
 from hummingbot.client.config.config_var import ConfigVar
 from hummingbot.client.settings import (
     required_exchanges,
-    AllConnectorSettings,
+    EXAMPLE_PAIRS,
 )
 
 
 def trading_pair_prompt():
     exchange = dev_2_perform_trade_config_map.get("exchange").value
-    example = AllConnectorSettings.get_example_pairs().get(exchange)
+    example = EXAMPLE_PAIRS.get(exchange)
     return "Enter the trading pair you would like to trade on %s%s >>> " \
            % (exchange, f" (e.g. {example})" if example else "")
 
@@ -49,11 +52,23 @@ def validate_decimal(value: str, min_value: Decimal = None, max_value: Decimal =
             return f"Value must be less than {max_value}."
 
 
-def order_amount_prompt() -> str:
+async def validate_order_amount(value: str) -> Optional[str]:
+    try:
+        exchange = dev_2_perform_trade_config_map["exchange"].value
+        trading_pair = dev_2_perform_trade_config_map["trading_pair"].value
+        min_amount = await minimum_order_amount(exchange, trading_pair)
+        if Decimal(value) < min_amount:
+            return f"Order amount must be at least {min_amount}."
+    except Exception:
+        return "Invalid order amount."
+
+
+async def order_amount_prompt() -> str:
+    exchange = dev_2_perform_trade_config_map["exchange"].value
     trading_pair = dev_2_perform_trade_config_map["trading_pair"].value
     base_asset, quote_asset = trading_pair.split("-")
-    return f"What is the amount of {base_asset} per order? >>> "
-
+    min_amount = await minimum_order_amount(exchange, trading_pair)
+    return f"What is the amount of {base_asset} per order? (minimum {min_amount}) >>> "
 
 dev_2_perform_trade_config_map = {
     "strategy":
@@ -92,7 +107,7 @@ dev_2_perform_trade_config_map = {
         ConfigVar(key="order_amount",
                   prompt=order_amount_prompt,
                   type_str="decimal",
-                  validator=lambda v: validate_decimal(v, min_value=Decimal("0"), inclusive=False),
+                  validator=validate_order_amount,
                   prompt_on_new=True,
                   ),
     "price_type":
