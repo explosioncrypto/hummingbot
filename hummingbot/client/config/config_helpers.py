@@ -1,5 +1,6 @@
 import logging
 from decimal import Decimal
+from functools import lru_cache
 import ruamel.yaml
 from os import (
     unlink
@@ -10,6 +11,7 @@ from os.path import (
 )
 from collections import OrderedDict
 import json
+import requests
 from typing import (
     Any,
     Callable,
@@ -31,10 +33,12 @@ from hummingbot.client.settings import (
     CONF_POSTFIX,
     CONF_PREFIX,
     TOKEN_ADDRESSES_FILE_PATH,
+    CONNECTOR_SETTINGS
 )
 from hummingbot.client.config.security import Security
-from hummingbot.core.utils.market_mid_price import get_mid_price
+from hummingbot.core.utils.market_price import get_last_price
 from hummingbot import get_strategy_list
+from eth_account import Account
 
 # Use ruamel.yaml to preserve order and comments in .yml file
 yaml_parser = ruamel.yaml.YAML()
@@ -152,18 +156,41 @@ def get_strategy_template_path(strategy: str) -> str:
     return join(TEMPLATE_PATH, f"{CONF_PREFIX}{strategy}{CONF_POSTFIX}_TEMPLATE.yml")
 
 
-def get_erc20_token_addresses(trading_pairs: List[str]):
+def get_eth_wallet_private_key() -> Optional[str]:
+    ethereum_wallet = global_config_map.get("ethereum_wallet").value
+    if ethereum_wallet is None or ethereum_wallet == "":
+        return None
+    private_key = Security._private_keys[ethereum_wallet]
+    account = Account.privateKeyToAccount(private_key)
+    return account.privateKey.hex()
 
-    with open(TOKEN_ADDRESSES_FILE_PATH) as f:
-        try:
-            data: Dict[str, str] = json.load(f)
-            overrides: Dict[str, str] = global_config_map.get("ethereum_token_overrides").value
-            if overrides is not None:
-                data.update(overrides)
-            addresses = [data[trading_pair] for trading_pair in trading_pairs if trading_pair in data]
-            return addresses
-        except Exception as e:
-            logging.getLogger().error(e, exc_info=True)
+
+@lru_cache(None)
+def get_erc20_token_addresses() -> Dict[str, List]:
+    token_list_url = global_config_map.get("ethereum_token_list_url").value
+    address_file_path = TOKEN_ADDRESSES_FILE_PATH
+    token_list = {}
+
+    resp = requests.get(token_list_url, timeout=3)
+    decoded_resp = resp.json()
+
+    for token in decoded_resp["tokens"]:
+        token_list[token["symbol"]] = [token["address"], token["decimals"]]
+
+    try:
+        with open(address_file_path) as f:
+            overrides: Dict[str, str] = json.load(f)
+            for token, address in overrides.items():
+                override_token = token_list.get(token, [address, 18])
+                token_list[token] = [address, override_token[1]]
+    except FileNotFoundError:
+        # create override file for first run w docker
+        with open(address_file_path, "w+") as f:
+            f.write(json.dumps({}))
+    except Exception as e:
+        logging.getLogger().error(e, exc_info=True)
+
+    return token_list
 
 
 def _merge_dicts(*args: Dict[str, ConfigVar]) -> OrderedDict:
@@ -177,17 +204,10 @@ def _merge_dicts(*args: Dict[str, ConfigVar]) -> OrderedDict:
 
 
 def get_connector_class(connector_name: str) -> Callable:
-    connector_types = ["connector", "exchange", "derivative"]
-    for type in connector_types:
-        connector_module_name = f"{connector_name}_{type}"
-        connector_class_name = "".join([o.capitalize() for o in connector_module_name.split("_")])
-        try:
-            mod = __import__(f'hummingbot.connector.{type}.{connector_name}.{connector_module_name}',
-                             fromlist=[connector_class_name])
-            return getattr(mod, connector_class_name)
-        except Exception:
-            continue
-    raise Exception(f"Connector {connector_name} class not found")
+    conn_setting = CONNECTOR_SETTINGS[connector_name]
+    mod = __import__(conn_setting.module_path(),
+                     fromlist=[conn_setting.class_name()])
+    return getattr(mod, conn_setting.class_name())
 
 
 def get_strategy_config_map(strategy: str) -> Optional[Dict[str, ConfigVar]]:
@@ -243,15 +263,15 @@ def validate_strategy_file(file_path: str) -> Optional[str]:
     return None
 
 
-def update_strategy_config_map_from_file(yml_path: str) -> str:
+async def update_strategy_config_map_from_file(yml_path: str) -> str:
     strategy = strategy_name_from_file(yml_path)
     config_map = get_strategy_config_map(strategy)
     template_path = get_strategy_template_path(strategy)
-    load_yml_into_cm(yml_path, template_path, config_map)
+    await load_yml_into_cm(yml_path, template_path, config_map)
     return strategy
 
 
-def load_yml_into_cm(yml_path: str, template_file_path: str, cm: Dict[str, ConfigVar]):
+async def load_yml_into_cm(yml_path: str, template_file_path: str, cm: Dict[str, ConfigVar]):
     try:
         with open(yml_path) as stream:
             data = yaml_parser.load(stream) or {}
@@ -283,7 +303,7 @@ def load_yml_into_cm(yml_path: str, template_file_path: str, cm: Dict[str, Confi
             # Todo: the proper process should be first validate the value then assign it
             cvar.value = parse_cvar_value(cvar, val_in_file)
             if cvar.value is not None:
-                err_msg = cvar.validate(str(cvar.value))
+                err_msg = await cvar.validate(str(cvar.value))
                 if err_msg is not None:
                     # Instead of raising an exception, simply skip over this variable and wait till the user is prompted
                     logging.getLogger().error("Invalid value %s for config variable %s" % (val_in_file, cvar.key))
@@ -302,14 +322,14 @@ def load_yml_into_cm(yml_path: str, template_file_path: str, cm: Dict[str, Confi
                                   exc_info=True)
 
 
-def read_system_configs_from_yml():
+async def read_system_configs_from_yml():
     """
     Read global config and selected strategy yml files and save the values to corresponding config map
     If a yml file is outdated, it gets reformatted with the new template
     """
-    load_yml_into_cm(GLOBAL_CONFIG_PATH, join(TEMPLATE_PATH, "conf_global_TEMPLATE.yml"), global_config_map)
-    load_yml_into_cm(TRADE_FEES_CONFIG_PATH, join(TEMPLATE_PATH, "conf_fee_overrides_TEMPLATE.yml"),
-                     fee_overrides_config_map)
+    await load_yml_into_cm(GLOBAL_CONFIG_PATH, join(TEMPLATE_PATH, "conf_global_TEMPLATE.yml"), global_config_map)
+    await load_yml_into_cm(TRADE_FEES_CONFIG_PATH, join(TEMPLATE_PATH, "conf_fee_overrides_TEMPLATE.yml"),
+                           fee_overrides_config_map)
     # In case config maps get updated (due to default values)
     save_system_configs_to_yml()
 
@@ -385,12 +405,12 @@ def default_min_quote(quote_asset: str) -> (str, Decimal):
     return result_quote, result_amount
 
 
-def minimum_order_amount(exchange: str, trading_pair: str) -> Decimal:
+async def minimum_order_amount(exchange: str, trading_pair: str) -> Decimal:
     base_asset, quote_asset = trading_pair.split("-")
     default_quote_asset, default_amount = default_min_quote(quote_asset)
     quote_amount = Decimal("0")
     if default_quote_asset == quote_asset:
-        mid_price = get_mid_price(exchange, trading_pair)
+        mid_price = await get_last_price(exchange, trading_pair)
         if mid_price is not None:
             quote_amount = default_amount / mid_price
     return round(quote_amount, 4)
