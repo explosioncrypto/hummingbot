@@ -5,8 +5,7 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 from hummingbot.client.performance import PerformanceMetrics
-from hummingbot.core.data_type.trade import Trade, TradeType
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
+from hummingbot.core.data_type.trade import Trade, TradeType, TradeFee
 
 trading_pair = "HBOT-USDT"
 base, quote = trading_pair.split("-")
@@ -22,7 +21,7 @@ class PerformanceMetricsUnitTest(unittest.TestCase):
         trade.amount = amount
         trade.price = price
         if fee:
-            trade.trade_fee = fee.to_json()
+            trade.trade_fee = TradeFee.to_json(fee)
 
         return trade
 
@@ -111,26 +110,8 @@ class PerformanceMetricsUnitTest(unittest.TestCase):
 
     def test_performance_metrics(self):
         trades: List[Trade] = [
-            Trade(
-                trading_pair,
-                TradeType.BUY,
-                100,
-                10,
-                None,
-                trading_pair,
-                1,
-                AddedToCostTradeFee(flat_fees=[TokenAmount(quote, 0)])
-            ),
-            Trade(
-                trading_pair,
-                TradeType.SELL,
-                120,
-                15,
-                None,
-                trading_pair,
-                1,
-                AddedToCostTradeFee(flat_fees=[TokenAmount(quote, 0)])
-            )
+            Trade(trading_pair, TradeType.BUY, 100, 10, None, trading_pair, 1, TradeFee(0.0, [(quote, 0)])),
+            Trade(trading_pair, TradeType.SELL, 120, 15, None, trading_pair, 1, TradeFee(0.0, [(quote, 0)]))
         ]
         cur_bals = {base: 100, quote: 10000}
         metrics = asyncio.get_event_loop().run_until_complete(
@@ -147,25 +128,25 @@ class PerformanceMetricsUnitTest(unittest.TestCase):
                                       price=10,
                                       position="OPEN",
                                       type="BUY",
-                                      fee=AddedToCostTradeFee(flat_fees=[TokenAmount(quote, 0)])))
+                                      fee=TradeFee(0.0, [(quote, 0)])))
         trades.append(self.mock_trade(id="order2",
                                       amount=100,
                                       price=15,
                                       position="CLOSE",
                                       type="SELL",
-                                      fee=AddedToCostTradeFee(flat_fees=[TokenAmount(quote, 0)])))
+                                      fee=TradeFee(0.0, [(quote, 0)])))
         trades.append(self.mock_trade(id="order3",
                                       amount=100,
                                       price=20,
                                       position="OPEN",
                                       type="SELL",
-                                      fee=AddedToCostTradeFee(0.1, flat_fees=[TokenAmount("USD", 0)])))
+                                      fee=TradeFee(0.1, [("USD", 0)])))
         trades.append(self.mock_trade(id="order4",
                                       amount=100,
                                       price=15,
                                       position="CLOSE",
                                       type="BUY",
-                                      fee=AddedToCostTradeFee(0.1, flat_fees=[TokenAmount("USD", 0)])))
+                                      fee=TradeFee(0.1, [("USD", 0)])))
 
         cur_bals = {base: 100, quote: 10000}
         metrics = asyncio.get_event_loop().run_until_complete(

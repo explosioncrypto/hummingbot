@@ -1,13 +1,12 @@
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import List, Dict
 
 from hummingbot.connector.exchange_base import ExchangeBase
 from hummingbot.connector.in_flight_order_base import InFlightOrderBase
 from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.order_book import OrderBook
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee
-from hummingbot.core.event.events import OrderType, TradeType
+from hummingbot.core.event.events import OrderType, TradeType, TradeFee
 
 s_decimal_NaN = Decimal("nan")
 
@@ -75,8 +74,7 @@ class MockExchange(ExchangeBase):
         pass
 
     def get_fee(self, base_currency: str, quote_currency: str, order_type: OrderType, order_side: TradeType,
-                amount: Decimal, price: Decimal = s_decimal_NaN, is_maker: Optional[bool] = None
-                ) -> AddedToCostTradeFee:
+                amount: Decimal, price: Decimal = s_decimal_NaN) -> TradeFee:
         pass
 
     _ready = False

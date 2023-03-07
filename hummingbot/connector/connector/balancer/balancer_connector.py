@@ -7,7 +7,6 @@ import json
 import time
 import ssl
 import copy
-
 from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
 from hummingbot.core.utils import async_ttl_cache
 from hummingbot.core.network_iterator import NetworkStatus
@@ -25,9 +24,9 @@ from hummingbot.core.event.events import (
     MarketOrderFailureEvent,
     OrderFilledEvent,
     OrderType,
-    TradeType
+    TradeType,
+    TradeFee
 )
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
 from hummingbot.connector.connector_base import ConnectorBase
 from hummingbot.connector.connector.balancer.balancer_in_flight_order import BalancerInFlightOrder
 from hummingbot.client.settings import GATEAWAY_CA_CERT_PATH, GATEAWAY_CLIENT_CERT_PATH, GATEAWAY_CLIENT_KEY_PATH
@@ -219,12 +218,9 @@ class BalancerConnector(ConnectorBase):
                     self.logger().info(f"Warning! [{index+1}/{len(exceptions)}] {side} order - {exceptions[index]}")
 
                 if price is not None and len(exceptions) == 0:
-                    fee_overrides_config_map["balancer_maker_fixed_fees"].value = [
-                        TokenAmount("ETH", Decimal(str(gas_cost)))
-                    ]
-                    fee_overrides_config_map["balancer_taker_fixed_fees"].value = [
-                        TokenAmount("ETH", Decimal(str(gas_cost)))
-                    ]
+                    # TODO standardize quote price object to include price, fee, token, is fee part of quote.
+                    fee_overrides_config_map["balancer_maker_fee_amount"].value = Decimal(str(gas_cost))
+                    fee_overrides_config_map["balancer_taker_fee_amount"].value = Decimal(str(gas_cost))
                     return Decimal(str(price))
         except asyncio.CancelledError:
             raise
@@ -409,9 +405,7 @@ class BalancerConnector(ConnectorBase):
                                 tracked_order.order_type,
                                 Decimal(str(tracked_order.price)),
                                 Decimal(str(tracked_order.amount)),
-                                AddedToCostTradeFee(
-                                    flat_fees=[TokenAmount(tracked_order.fee_asset, Decimal(str(fee)))]
-                                ),
+                                TradeFee(0.0, [(tracked_order.fee_asset, Decimal(str(fee)))]),
                                 exchange_trade_id=order_id
                             )
                         )

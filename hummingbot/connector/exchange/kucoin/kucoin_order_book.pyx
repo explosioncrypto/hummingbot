@@ -1,20 +1,22 @@
+#!/usr/bin/env python
 import logging
 from typing import (
     Dict,
     Optional
 )
-
-from aiokafka import ConsumerRecord
 import ujson
 
-from hummingbot.connector.exchange.kucoin.kucoin_order_book_message import KucoinOrderBookMessage
+from aiokafka import ConsumerRecord
+from sqlalchemy.engine import RowProxy
+
+from hummingbot.logger import HummingbotLogger
+from hummingbot.core.event.events import TradeType
 from hummingbot.core.data_type.order_book cimport OrderBook
 from hummingbot.core.data_type.order_book_message import (
     OrderBookMessage,
     OrderBookMessageType
 )
-from hummingbot.core.event.events import TradeType
-from hummingbot.logger import HummingbotLogger
+from hummingbot.connector.exchange.kucoin.kucoin_order_book_message import KucoinOrderBookMessage
 
 _kob_logger = None
 
@@ -57,6 +59,33 @@ cdef class KucoinOrderBook(OrderBook):
         }, timestamp=timestamp)
 
     @classmethod
+    def snapshot_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None) -> OrderBookMessage:
+        ts = int(record["timestamp"])
+        msg = record["json"] if type(record["json"]) == dict else ujson.loads(record["json"])
+        if metadata:
+            msg.update(metadata)
+        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
+            "trading_pair": msg["s"],
+            "update_id": ts,
+            "bids": msg["bids"],
+            "asks": msg["asks"]
+        }, timestamp=record["timestamp"] * 1e-3)
+
+    @classmethod
+    def diff_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None) -> OrderBookMessage:
+        ts = int(record["timestamp"])
+        msg = record["json"] if type(record["json"]) == dict else ujson.loads(record["json"])
+        if metadata:
+            msg.update(metadata)
+        return OrderBookMessage(OrderBookMessageType.DIFF, {
+            "trading_pair": msg["s"],
+            "first_update_id": msg.get("first_update_id", ts),
+            "update_id": ts,
+            "bids": msg["bids"],
+            "asks": msg["asks"]
+        }, timestamp=record["timestamp"] * 1e-3)
+
+    @classmethod
     def snapshot_message_from_kafka(cls, record: ConsumerRecord, metadata: Optional[Dict] = None) -> OrderBookMessage:
         ts = record.timestamp
         msg = ujson.loads(record.value.decode("utf-8"))
@@ -81,6 +110,21 @@ cdef class KucoinOrderBook(OrderBook):
             "asks": msg["data"]["asks"]
 
         }, timestamp=record.timestamp * 1e-3)
+
+    @classmethod
+    def trade_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None):
+        ts = int(record["timestamp"])
+        msg = record["json"] if type(record["json"]) == dict else ujson.loads(record["json"])
+        if metadata:
+            msg.update(metadata)
+        return OrderBookMessage(OrderBookMessageType.TRADE, {
+            "trading_pair": msg["s"],
+            "trade_type": msg["trade_type"],
+            "trade_id": ts,
+            "update_id": msg["update_id"],
+            "price": msg["price"],
+            "amount": msg["amount"]
+        }, timestamp=ts * 1e-3)
 
     @classmethod
     def trade_message_from_exchange(cls, msg: Dict[str, any], metadata: Optional[Dict] = None):

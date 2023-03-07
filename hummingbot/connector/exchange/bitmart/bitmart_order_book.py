@@ -1,9 +1,13 @@
 #!/usr/bin/env python
-from typing import Any, Dict, Optional
-
-from hummingbot.connector.exchange.bitmart.bitmart_order_book_message import BitmartOrderBookMessage
+from typing import (
+    Optional,
+    Dict,
+    Any)
 from hummingbot.core.data_type.order_book import OrderBook
-from hummingbot.core.data_type.order_book_message import OrderBookMessageType
+from hummingbot.core.data_type.order_book_message import (
+    OrderBookMessageType
+)
+from hummingbot.connector.exchange.bitmart.bitmart_order_book_message import BitmartOrderBookMessage
 
 
 class BitmartOrderBook(OrderBook):

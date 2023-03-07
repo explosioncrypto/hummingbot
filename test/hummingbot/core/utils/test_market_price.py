@@ -1,19 +1,16 @@
 import asyncio
 import re
-import unittest
-
-from decimal import Decimal
-from typing import Any, Awaitable, Dict, List
-
 import ujson
-from aioresponses import aioresponses
-from bidict import bidict
+import unittest
 
 import hummingbot.connector.exchange.binance.binance_constants as CONSTANTS
 import hummingbot.connector.exchange.binance.binance_utils as utils
 import hummingbot.core.utils.market_price as market_price
 
-from hummingbot.connector.exchange.binance.binance_api_order_book_data_source import BinanceAPIOrderBookDataSource
+from aioresponses import aioresponses
+from decimal import Decimal
+from typing import Any, Awaitable, Dict, List
+from unittest.mock import patch
 
 
 class MarketPriceUnitTests(unittest.TestCase):
@@ -27,20 +24,14 @@ class MarketPriceUnitTests(unittest.TestCase):
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
         cls.binance_ex_trading_pair = f"{cls.base_asset}{cls.quote_asset}"
 
-    def tearDown(self) -> None:
-        BinanceAPIOrderBookDataSource._trading_pair_symbol_map = {}
-        super().tearDown()
-
     def async_run_with_timeout(self, coroutine: Awaitable, timeout: float = 1):
         ret = self.ev_loop.run_until_complete(asyncio.wait_for(coroutine, timeout))
         return ret
 
     @aioresponses()
-    def test_get_binance_mid_price(self, mock_api):
-        BinanceAPIOrderBookDataSource._trading_pair_symbol_map = {
-            "com": bidict(
-                {f"{self.base_asset}{self.quote_asset}": self.trading_pair})
-        }
+    @patch("hummingbot.connector.exchange.binance.binance_utils.convert_from_exchange_trading_pair")
+    def test_get_binanace_mid_price(self, mock_api, mock_utils):
+        mock_utils.return_value = self.trading_pair
 
         url = utils.public_rest_url(path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
@@ -59,11 +50,9 @@ class MarketPriceUnitTests(unittest.TestCase):
         self.assertEqual(result, Decimal("1.5"))
 
     @aioresponses()
-    def test_get_last_price(self, mock_api):
-        BinanceAPIOrderBookDataSource._trading_pair_symbol_map = {
-            "com": bidict(
-                {f"{self.binance_ex_trading_pair}": self.trading_pair})
-        }
+    @patch("hummingbot.connector.exchange.binance.binance_utils.convert_from_exchange_trading_pair")
+    def test_get_last_price(self, mock_api, mock_utils):
+        mock_utils.return_value = self.trading_pair
 
         url = utils.public_rest_url(path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))

@@ -3,7 +3,6 @@ import copy
 import logging
 import math
 import time
-import warnings
 from decimal import Decimal
 from typing import Any, AsyncIterable, Dict, List, Optional
 
@@ -51,9 +50,9 @@ from hummingbot.core.event.events import (
     PositionSide,
     SellOrderCompletedEvent,
     SellOrderCreatedEvent,
+    TradeFee,
     TradeType
 )
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
 from hummingbot.logger import HummingbotLogger
@@ -672,16 +671,14 @@ class BybitPerpetualDerivative(ExchangeBase, PerpetualTrading):
                 order_type: OrderType,
                 order_side: TradeType,
                 amount: Decimal,
-                price: Decimal = s_decimal_NaN,
-                is_maker: Optional[bool] = None):
-        warnings.warn(
-            "The 'estimate_fee' method is deprecated, use 'build_trade_fee' and 'build_perpetual_trade_fee' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        raise DeprecationWarning(
-            "The 'estimate_fee' method is deprecated, use 'build_trade_fee' and 'build_perpetual_trade_fee' instead."
-        )
+                price: Decimal = s_decimal_NaN) -> TradeFee:
+        """
+        To get trading fee, this function is simplified by using fee override configuration. Most parameters to this
+        function are ignore except order_type. Use OrderType.LIMIT_MAKER to specify you want trading fee for
+        maker order.
+        """
+        is_maker = order_type is OrderType.LIMIT
+        return TradeFee(percent=self.estimate_fee_pct(is_maker))
 
     def _format_trading_rules(self, instrument_info: List[Dict[str, Any]]) -> Dict[str, TradingRule]:
         """
@@ -1003,9 +1000,7 @@ class BybitPerpetualDerivative(ExchangeBase, PerpetualTrading):
                         tracked_order.order_type,
                         Decimal(trade_msg["exec_price"]) if "exec_price" in trade_msg else Decimal(trade_msg["price"]),
                         Decimal(trade_msg["exec_qty"]),
-                        AddedToCostTradeFee(
-                            flat_fees=[TokenAmount(tracked_order.fee_asset, Decimal(trade_msg["exec_fee"]))]
-                        ),
+                        TradeFee(Decimal(0), [(tracked_order.fee_asset, Decimal(trade_msg["exec_fee"]))]),
                         exchange_trade_id=str(trade_msg["exec_id"]),
                         leverage=self._leverage[tracked_order.trading_pair],
                         position=tracked_order.position

@@ -1,21 +1,20 @@
+#!/usr/bin/env python
+
+import uuid
 import asyncio
 import hashlib
 import hmac
 import logging
 import time
-import uuid
-
 from base64 import b64decode
-from typing import Any, AsyncIterable, Dict, List, Optional
+from typing import AsyncIterable, Dict, Optional, List, Any
 from zlib import decompress, MAX_WBITS
 
 import signalr_aio
 import ujson
-
 from async_timeout import timeout
-
-from hummingbot.connector.exchange.bittrex.bittrex_auth import BittrexAuth
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
+from hummingbot.connector.exchange.bittrex.bittrex_auth import BittrexAuth
 from hummingbot.logger import HummingbotLogger
 
 BITTREX_WS_FEED = "https://socket-v3.bittrex.com/signalr"
@@ -82,23 +81,17 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
             return ujson.loads(decode_msg.decode(), precise_float=True)
 
-        def _is_event_type(msg, event_name) -> bool:
-            return len(msg.get("M", [])) > 0 and type(msg["M"][0]) == dict and msg["M"][0].get("M", None) == event_name
-
         def _is_heartbeat(msg):
-            return _is_event_type(msg, "heartbeat")
+            return len(msg.get("M", [])) > 0 and type(msg["M"][0]) == dict and msg["M"][0].get("M", None) == "heartbeat"
 
         def _is_auth_notification(msg):
-            return _is_event_type(msg, "authenticationExpiring")
+            return len(msg.get("M", [])) > 0 and type(msg["M"][0]) == dict and msg["M"][0].get("M", None) == "authenticationExpiring"
 
         def _is_order_delta(msg) -> bool:
-            return _is_event_type(msg, "order")
+            return len(msg.get("M", [])) > 0 and type(msg["M"][0]) == dict and msg["M"][0].get("M", None) == "order"
 
         def _is_balance_delta(msg) -> bool:
-            return _is_event_type(msg, "balance")
-
-        def _is_execution_event(msg) -> bool:
-            return _is_event_type(msg, "execution")
+            return len(msg.get("M", [])) > 0 and type(msg["M"][0]) == dict and msg["M"][0].get("M", None) == "balance"
 
         output: Dict[str, Any] = {"event_type": None, "content": None, "error": None}
         msg: Dict[str, Any] = ujson.loads(msg)
@@ -109,8 +102,12 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
         elif _is_heartbeat(msg):
             output["event_type"] = "heartbeat"
 
-        elif _is_balance_delta(msg) or _is_order_delta(msg) or _is_execution_event(msg):
-            output["event_type"] = msg["M"][0]["M"]
+        elif _is_balance_delta(msg):
+            output["event_type"] = "balance"
+            output["content"] = _decode_message(msg["M"][0]["A"][0])
+
+        elif _is_order_delta(msg):
+            output["event_type"] = "order"
             output["content"] = _decode_message(msg["M"][0]["A"][0])
 
         return output
@@ -122,7 +119,9 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
                 self.hub = self._websocket_connection.register_hub("c3")
 
                 await self.authenticate()
-                self.hub.server.invoke("Subscribe", ["heartbeat", "order", "balance", "execution"])
+                self.hub.server.invoke("Subscribe", ["heartbeat"])
+                self.hub.server.invoke("Subscribe", ["order"])
+                self.hub.server.invoke("Subscribe", ["balance"])
                 self._websocket_connection.start()
 
                 async for raw_message in self._socket_user_stream(self._websocket_connection):
@@ -134,7 +133,7 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
                     content_type = decode.get("event_type")
                     if content_type is not None:
-                        if content_type in ["balance", "order", "execution"]:
+                        if content_type in ["balance", "order"]:  # balance: Balance Delta, order: Order Delta
                             output.put_nowait(decode)
                         elif content_type == "re-authenticate":
                             await self.authenticate()

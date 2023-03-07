@@ -1,14 +1,16 @@
 import asyncio
 import logging
+import time
+from typing import Optional, List
 
-from typing import List, Optional
-
-from hummingbot.connector.exchange.bitfinex import ContentEventType
-from hummingbot.connector.exchange.bitfinex.bitfinex_auth import BitfinexAuth
+from hummingbot.core.data_type.user_stream_tracker_data_source import \
+    UserStreamTrackerDataSource
+from hummingbot.logger import HummingbotLogger
 from hummingbot.connector.exchange.bitfinex.bitfinex_order_book import BitfinexOrderBook
 from hummingbot.connector.exchange.bitfinex.bitfinex_websocket import BitfinexWebsocket
-from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.logger import HummingbotLogger
+from hummingbot.connector.exchange.bitfinex.bitfinex_auth import BitfinexAuth
+from hummingbot.connector.exchange.bitfinex.bitfinex_order_book_message import \
+    BitfinexOrderBookMessage
 
 
 class BitfinexAPIUserStreamDataSource(UserStreamTrackerDataSource):
@@ -47,8 +49,12 @@ class BitfinexAPIUserStreamDataSource(UserStreamTrackerDataSource):
                 await ws.authenticate()
 
                 async for msg in ws.messages():
-                    if msg[1] not in [ContentEventType.HEART_BEAT, ContentEventType.AUTH, ContentEventType.INFO]:
-                        output.put_nowait(msg)
+                    transformed_msg: BitfinexOrderBookMessage = self._transform_message_from_exchange(msg)
+
+                    if transformed_msg is None:
+                        continue
+                    else:
+                        output.put_nowait(transformed_msg)
 
             except asyncio.CancelledError:
                 raise
@@ -58,3 +64,14 @@ class BitfinexAPIUserStreamDataSource(UserStreamTrackerDataSource):
                     exc_info=True,
                 )
                 await asyncio.sleep(self.MESSAGE_TIMEOUT)
+
+    def _transform_message_from_exchange(self, msg) -> Optional[BitfinexOrderBookMessage]:
+        order_book_message: BitfinexOrderBookMessage = BitfinexOrderBook.diff_message_from_exchange(msg, time.time())
+        if any([
+            order_book_message.type_heartbeat,
+            order_book_message.event_auth,
+            order_book_message.event_info,
+        ]):
+            # skip unneeded events and types
+            return
+        return order_book_message

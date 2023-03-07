@@ -14,9 +14,7 @@ import random
 from typing import (
     Dict,
     List,
-    Optional,
-    Tuple,
-)
+    Tuple)
 from cython.operator cimport(
     postincrement as inc,
     dereference as deref,
@@ -58,7 +56,7 @@ from hummingbot.core.event.event_listener cimport EventListener
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.connector.exchange_base import ExchangeBase
 from hummingbot.connector.exchange.paper_trade.trading_pair import TradingPair
-from hummingbot.core.utils.estimate_fee import estimate_fee, build_trade_fee
+from hummingbot.core.utils.estimate_fee import estimate_fee
 
 from .market_config import (
     MarketConfig,
@@ -907,18 +905,8 @@ cdef class PaperTradeExchange(ExchangeBase):
                           object order_type,
                           object order_side,
                           object amount,
-                          object price,
-                          object is_maker = None):
-        return build_trade_fee(
-            self.name,
-            is_maker=is_maker if is_maker is not None else order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER],
-            base_currency=base_asset,
-            quote_currency=quote_asset,
-            order_type=order_type,
-            order_side=order_side,
-            amount=amount,
-            price=price,
-        )
+                          object price):
+        return estimate_fee(self.name, order_type is OrderType.LIMIT)
 
     cdef OrderBook c_get_order_book(self, str trading_pair):
         if trading_pair not in self._trading_pairs:
@@ -1007,9 +995,8 @@ cdef class PaperTradeExchange(ExchangeBase):
                 order_type: OrderType,
                 order_side: TradeType,
                 amount: Decimal,
-                price: Decimal = s_decimal_0,
-                is_maker: Optional[bool] = None):
-        return self.c_get_fee(base_currency, quote_currency, order_type, order_side, amount, price, is_maker)
+                price: Decimal = s_decimal_0):
+        return self.c_get_fee(base_currency, quote_currency, order_type, order_side, amount, price)
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
         return self.c_get_order_book(trading_pair)

@@ -19,9 +19,9 @@ from hummingbot.core.event.events import (
     PositionSide,
     PriceType,
     SellOrderCompletedEvent,
+    TradeFee,
     TradeType,
 )
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TradeFeeSchema
 from hummingbot.strategy.data_types import Proposal, PriceSize
 from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
 from hummingbot.strategy.perpetual_market_making import PerpetualMarketMakingStrategy
@@ -49,15 +49,12 @@ class PerpetualMarketMakingTests(TestCase):
         cls.stop_loss_slippage_buffer = Decimal("0.1")
         cls.long_profit_taking_spread = Decimal("0.5")
         cls.short_profit_taking_spread = Decimal("0.4")
-        cls.trade_fee_schema = TradeFeeSchema(
-            maker_percent_fee_decimal=Decimal("0.01"),
-            taker_percent_fee_decimal=Decimal("0.01"),
-        )
+        cls.fee_percent = Decimal("1")
 
     def setUp(self):
         super().setUp()
         self.log_records = []
-        self.market: MockPerpConnector = MockPerpConnector(self.trade_fee_schema)
+        self.market: MockPerpConnector = MockPerpConnector(self.fee_percent)
         self.market.set_quantization_param(
             QuantizationParams(
                 self.trading_pair,
@@ -143,7 +140,7 @@ class PerpetualMarketMakingTests(TestCase):
             OrderType.LIMIT,
             limit_order.price,
             limit_order.quantity,
-            AddedToCostTradeFee(Decimal("0"))
+            TradeFee(Decimal("0"))
         ))
         event_type = MarketEvent.BuyOrderCompleted if limit_order.is_buy else MarketEvent.SellOrderCompleted
         event_class = BuyOrderCompletedEvent if limit_order.is_buy else SellOrderCompletedEvent

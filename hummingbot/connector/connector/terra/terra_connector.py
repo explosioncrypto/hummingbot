@@ -1,38 +1,36 @@
-import asyncio
-import copy
-import json
 import logging
-import ssl
-import time
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
-
+import asyncio
 import aiohttp
-
-from hummingbot.client.config.global_config_map import global_config_map
-from hummingbot.client.settings import GATEAWAY_CA_CERT_PATH, GATEAWAY_CLIENT_CERT_PATH, GATEAWAY_CLIENT_KEY_PATH
-from hummingbot.connector.connector.terra.terra_in_flight_order import TerraInFlightOrder
-from hummingbot.connector.connector_base import ConnectorBase
-from hummingbot.core.data_type.cancellation_result import CancellationResult
+from typing import Dict, Any, List, Optional
+import json
+import time
+import ssl
+import copy
+from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
+from hummingbot.core.utils import async_ttl_cache
+from hummingbot.core.network_iterator import NetworkStatus
+from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.logger import HummingbotLogger
+from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
 from hummingbot.core.data_type.limit_order import LimitOrder
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
+from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.event.events import (
-    BuyOrderCompletedEvent,
-    BuyOrderCreatedEvent,
     MarketEvent,
+    BuyOrderCreatedEvent,
+    SellOrderCreatedEvent,
+    BuyOrderCompletedEvent,
+    SellOrderCompletedEvent,
     MarketOrderFailureEvent,
     OrderFilledEvent,
     OrderType,
-    SellOrderCompletedEvent,
-    SellOrderCreatedEvent,
-    TradeType
+    TradeType,
+    TradeFee
 )
-from hummingbot.core.network_iterator import NetworkStatus
-from hummingbot.core.utils import async_ttl_cache
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
-from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
-from hummingbot.logger import HummingbotLogger
-from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
+from hummingbot.connector.connector_base import ConnectorBase
+from hummingbot.connector.connector.terra.terra_in_flight_order import TerraInFlightOrder
+from hummingbot.client.settings import GATEAWAY_CA_CERT_PATH, GATEAWAY_CLIENT_CERT_PATH, GATEAWAY_CLIENT_KEY_PATH
+from hummingbot.client.config.global_config_map import global_config_map
 
 s_logger = None
 s_decimal_0 = Decimal("0")
@@ -220,9 +218,7 @@ class TerraConnector(ConnectorBase):
                                        tracked_order.order_type,
                                        price,
                                        amount,
-                                       AddedToCostTradeFee(
-                                           flat_fees=[TokenAmount(tracked_order.fee_asset, tracked_order.fee_paid)]
-                                       ),
+                                       TradeFee(0.0, [(tracked_order.fee_asset, tracked_order.fee_paid)]),
                                        hash
                                    ))
 

@@ -1,17 +1,12 @@
-from decimal import Decimal
-
 from hummingbot.client.config.config_var import ConfigVar
 from hummingbot.client.config.config_methods import using_exchange
-from hummingbot.core.data_type.trade_fee import TradeFeeSchema
+
 
 CENTRALIZED = True
 
 EXAMPLE_PAIR = "ZRX-ETH"
 
-DEFAULT_FEES = TradeFeeSchema(
-    maker_percent_fee_decimal=Decimal("0.0035"),
-    taker_percent_fee_decimal=Decimal("0.0035"),
-)
+DEFAULT_FEES = [0.25, 0.25]
 
 KEYS = {
     "bittrex_api_key":

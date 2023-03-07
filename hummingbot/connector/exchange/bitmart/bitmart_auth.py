@@ -1,7 +1,7 @@
-import hashlib
 import hmac
 import json
-from typing import Any, Dict
+import hashlib
+from typing import Dict, Any
 
 
 class BitmartAuth():

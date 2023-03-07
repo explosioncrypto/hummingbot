@@ -1,6 +1,5 @@
-import datetime
-import pandas as pd
 from decimal import Decimal
+import pandas as pd
 from typing import (
     List,
     Tuple,
@@ -9,10 +8,6 @@ from typing import (
 from hummingbot import data_path
 import os.path
 from hummingbot.client.hummingbot_application import HummingbotApplication
-from hummingbot.strategy.conditional_execution_state import (
-    RunAlwaysExecutionState,
-    RunInTimeConditionalExecutionState
-)
 from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
 from hummingbot.strategy.avellaneda_market_making import (
     AvellanedaMarketMakingStrategy,
@@ -51,22 +46,7 @@ def start(self):
         risk_factor = c_map.get("risk_factor").value
         order_amount_shape_factor = c_map.get("order_amount_shape_factor").value
 
-        execution_timeframe = c_map.get("execution_timeframe").value
-
-        start_time = c_map.get("start_time").value
-        end_time = c_map.get("end_time").value
-
-        if execution_timeframe == "from_date_to_date":
-            start_time = datetime.datetime.fromisoformat(start_time)
-            end_time = datetime.datetime.fromisoformat(end_time)
-            execution_state = RunInTimeConditionalExecutionState(start_timestamp=start_time, end_timestamp=end_time)
-        if execution_timeframe == "daily_between_times":
-            start_time = datetime.datetime.strptime(start_time, '%H:%M:%S').time()
-            end_time = datetime.datetime.strptime(end_time, '%H:%M:%S').time()
-            execution_state = RunInTimeConditionalExecutionState(start_timestamp=start_time, end_timestamp=end_time)
-        if execution_timeframe == "infinite":
-            execution_state = RunAlwaysExecutionState()
-
+        closing_time = c_map.get("closing_time").value * Decimal(3600 * 24 * 1e3)
         min_spread = c_map.get("min_spread").value
         volatility_buffer_size = c_map.get("volatility_buffer_size").value
         trading_intensity_buffer_size = c_map.get("trading_intensity_buffer_size").value
@@ -95,10 +75,7 @@ def start(self):
             hb_app_notification=True,
             risk_factor=risk_factor,
             order_amount_shape_factor=order_amount_shape_factor,
-            execution_timeframe=execution_timeframe,
-            execution_state=execution_state,
-            start_time=start_time,
-            end_time=end_time,
+            closing_time=closing_time,
             min_spread=min_spread,
             debug_csv_path=debug_csv_path,
             volatility_buffer_size=volatility_buffer_size,

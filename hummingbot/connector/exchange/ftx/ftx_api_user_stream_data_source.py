@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import asyncio
 from decimal import Decimal
 import logging

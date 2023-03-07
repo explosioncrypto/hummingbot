@@ -1,40 +1,38 @@
-import asyncio
-import copy
-import json
 import logging
-import ssl
-import time
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
-
+import asyncio
 import aiohttp
-
-from hummingbot.client.config.fee_overrides_config_map import fee_overrides_config_map
-from hummingbot.client.config.global_config_map import global_config_map
-from hummingbot.client.settings import GATEAWAY_CA_CERT_PATH, GATEAWAY_CLIENT_CERT_PATH, GATEAWAY_CLIENT_KEY_PATH
-from hummingbot.connector.connector.uniswap.uniswap_in_flight_order import UniswapInFlightOrder
-from hummingbot.connector.connector_base import ConnectorBase
-from hummingbot.core.data_type.cancellation_result import CancellationResult
+from typing import Dict, Any, List, Optional
+import json
+import time
+import ssl
+import copy
+from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
+from hummingbot.core.utils import async_ttl_cache
+from hummingbot.core.network_iterator import NetworkStatus
+from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.logger import HummingbotLogger
+from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
 from hummingbot.core.data_type.limit_order import LimitOrder
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
+from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.event.events import (
-    BuyOrderCompletedEvent,
-    BuyOrderCreatedEvent,
     MarketEvent,
+    BuyOrderCreatedEvent,
+    SellOrderCreatedEvent,
+    BuyOrderCompletedEvent,
+    SellOrderCompletedEvent,
     MarketOrderFailureEvent,
     OrderFilledEvent,
     OrderType,
-    SellOrderCompletedEvent,
-    SellOrderCreatedEvent,
-    TradeType
+    TradeType,
+    TradeFee
 )
-from hummingbot.core.network_iterator import NetworkStatus
-from hummingbot.core.utils import async_ttl_cache
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.connector.connector_base import ConnectorBase
+from hummingbot.connector.connector.uniswap.uniswap_in_flight_order import UniswapInFlightOrder
+from hummingbot.client.settings import GATEAWAY_CA_CERT_PATH, GATEAWAY_CLIENT_CERT_PATH, GATEAWAY_CLIENT_KEY_PATH
+from hummingbot.client.config.global_config_map import global_config_map
 from hummingbot.core.utils.ethereum import check_transaction_exceptions, fetch_trading_pairs
-from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
-from hummingbot.logger import HummingbotLogger
-from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
+from hummingbot.client.config.fee_overrides_config_map import fee_overrides_config_map
 
 s_logger = None
 s_decimal_0 = Decimal("0")
@@ -221,12 +219,9 @@ class UniswapConnector(ConnectorBase):
                     self.logger().info(f"Warning! [{index+1}/{len(exceptions)}] {side} order - {exceptions[index]}")
 
                 if price is not None and len(exceptions) == 0:
-                    fee_overrides_config_map["uniswap_maker_fixed_fees"].value = [
-                        TokenAmount("ETH", Decimal(str(gas_cost)))
-                    ]
-                    fee_overrides_config_map["uniswap_taker_fixed_fees"].value = [
-                        TokenAmount("ETH", Decimal(str(gas_cost)))
-                    ]
+                    # TODO standardize quote price object to include price, fee, token, is fee part of quote.
+                    fee_overrides_config_map["uniswap_maker_fee_amount"].value = Decimal(str(gas_cost))
+                    fee_overrides_config_map["uniswap_taker_fee_amount"].value = Decimal(str(gas_cost))
                     return Decimal(str(price))
         except asyncio.CancelledError:
             raise
@@ -407,9 +402,7 @@ class UniswapConnector(ConnectorBase):
                                 tracked_order.order_type,
                                 Decimal(str(tracked_order.price)),
                                 Decimal(str(tracked_order.amount)),
-                                AddedToCostTradeFee(
-                                    flat_fees=[TokenAmount(tracked_order.fee_asset, Decimal(str(fee)))]
-                                ),
+                                TradeFee(0.0, [(tracked_order.fee_asset, Decimal(str(fee)))]),
                                 exchange_trade_id=order_id
                             )
                         )

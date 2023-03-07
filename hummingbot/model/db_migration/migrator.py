@@ -1,13 +1,11 @@
 import logging
 from shutil import copyfile, move
-from inspect import getmembers, isabstract, isclass
+from inspect import isabstract, isclass, getmembers
 from pathlib import Path
-
 import pandas as pd
 from sqlalchemy.exc import SQLAlchemyError
-
 from hummingbot.model.db_migration.base_transformation import DatabaseTransformation
-from hummingbot.model.sql_connection_manager import SQLConnectionManager, SQLConnectionType
+from hummingbot.model.sql_connection_manager import SQLConnectionType, SQLConnectionManager
 
 
 class Migrator:
@@ -30,32 +28,33 @@ class Migrator:
         copyfile(original_db_path, new_db_path)
         copyfile(original_db_path, backup_db_path)
 
+        db_handle.get_shared_session().close()
         db_handle.engine.dispose()
         new_db_handle = SQLConnectionManager(SQLConnectionType.TRADE_FILLS, new_db_path, original_db_name, True)
 
-        relevant_transformations = [t for t in self.transformations
-                                    if t.does_apply_to_version(from_version, to_version)]
+        relevant_transformations = [t for t in self.transformations if t.does_apply_to_version(from_version, to_version)]
         if relevant_transformations:
             logging.getLogger().info(
-                f"Will run DB migration from {from_version} to {to_version}")
+                f"Will run DB migration from {db_handle.get_local_db_version().value} to {to_version}")
 
-        migration_successful = False
+        migration_succesful = False
         try:
             for transformation in sorted(relevant_transformations):
                 logging.getLogger().info(f"Applying {transformation.name} to DB...")
                 new_db_handle = transformation.apply(new_db_handle)
                 logging.getLogger().info(f"DONE with {transformation.name}")
-            migration_successful = True
+            migration_succesful = True
         except SQLAlchemyError:
             logging.getLogger().error("Unexpected error while checking and upgrading the local database.",
                                       exc_info=True)
         finally:
             try:
+                new_db_handle.get_shared_session().close()
                 new_db_handle.engine.dispose()
-                if migration_successful:
+                if migration_succesful:
                     move(new_db_path, original_db_path)
                 db_handle.__init__(SQLConnectionType.TRADE_FILLS, original_db_path, original_db_name, True)
             except Exception as e:
                 logging.getLogger().error(f"Fatal error migrating DB {original_db_path}")
                 raise e
-        return migration_successful
+        return migration_succesful
