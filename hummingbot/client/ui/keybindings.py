@@ -1,24 +1,13 @@
 #!/usr/bin/env python
 
 from prompt_toolkit.application.current import get_app
-from prompt_toolkit.filters import (
-    is_searching,
-    to_filter,
-)
+from prompt_toolkit.filters import is_searching, to_filter
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.search import (
-    start_search,
-    stop_search,
-    do_incremental_search,
-    SearchDirection,
-)
+from prompt_toolkit.search import SearchDirection, do_incremental_search, start_search, stop_search
 
-from hummingbot.client.ui.scroll_handlers import (
-    scroll_down,
-    scroll_up,
-)
-from hummingbot.core.utils.async_utils import safe_ensure_future
+from hummingbot.client.ui.scroll_handlers import scroll_down, scroll_up
 from hummingbot.client.ui.style import reset_style
+from hummingbot.core.utils.async_utils import safe_ensure_future
 
 
 def load_key_bindings(hb) -> KeyBindings:
@@ -100,10 +89,18 @@ def load_key_bindings(hb) -> KeyBindings:
 
     @bindings.add("c-r")
     def do_reset_style(event):
-        hb.app.app.style = reset_style()
+        hb.app.app.style = reset_style(hb.client_config_map)
 
     @bindings.add("c-t")
     def toggle_logs(event):
-        hb.app.toggle_logs()
+        hb.app.toggle_right_pane()
+
+    @bindings.add('c-b')
+    def do_tab_navigate_left(event):
+        hb.app.tab_navigate_left()
+
+    @bindings.add('c-n')
+    def do_tab_navigate_right(event):
+        hb.app.tab_navigate_right()
 
     return bindings

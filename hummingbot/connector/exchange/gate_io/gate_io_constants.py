@@ -1,22 +1,25 @@
 # A single source of truth for constant variables related to the exchange
 from hummingbot.core.api_throttler.data_types import LinkedLimitWeightPair, RateLimit
+
 EXCHANGE_NAME = "gate_io"
+DEFAULT_DOMAIN = ""
+HBOT_BROKER_ID = "hummingbot"
+HBOT_ORDER_ID = "t-HBOT"
+MAX_ID_LEN = 30
+
 REST_URL = "https://api.gateio.ws/api/v4"
 REST_URL_AUTH = "/api/v4"
 WS_URL = "wss://api.gateio.ws/ws/v4/"
-
-HBOT_BROKER_ID = "hummingbot"
-HBOT_ORDER_ID = "t-HBOT"
-
 NETWORK_CHECK_PATH_URL = "spot/currencies/BTC"
 SYMBOL_PATH_URL = "spot/currency_pairs"
 ORDER_CREATE_PATH_URL = "spot/orders"
-ORDER_DELETE_PATH_URL = "spot/orders/{id}"
+ORDER_DELETE_PATH_URL = "spot/orders/{order_id}"
 USER_BALANCES_PATH_URL = "spot/accounts"
-ORDER_STATUS_PATH_URL = "spot/orders/{id}"
+ORDER_STATUS_PATH_URL = "spot/orders/{order_id}"
 USER_ORDERS_PATH_URL = "spot/open_orders"
 TICKER_PATH_URL = "spot/tickers"
 ORDER_BOOK_PATH_URL = "spot/order_book"
+MY_TRADES_PATH_URL = "spot/my_trades"
 
 TRADES_ENDPOINT_NAME = "spot.trades"
 ORDER_SNAPSHOT_ENDPOINT_NAME = "spot.order_book"
@@ -24,6 +27,7 @@ ORDERS_UPDATE_ENDPOINT_NAME = "spot.order_book_update"
 USER_TRADES_ENDPOINT_NAME = "spot.usertrades"
 USER_ORDERS_ENDPOINT_NAME = "spot.orders"
 USER_BALANCE_ENDPOINT_NAME = "spot.balances"
+PONG_CHANNEL_NAME = "spot.pong"
 
 # Timeouts
 MESSAGE_TIMEOUT = 30.0
@@ -58,5 +62,6 @@ RATE_LIMITS = [
     RateLimit(limit_id=ORDER_STATUS_LIMIT_ID, limit=900, time_interval=1, linked_limits=[LinkedLimitWeightPair(PRIVATE_URL_POINTS_LIMIT_ID)]),
     RateLimit(limit_id=USER_ORDERS_PATH_URL, limit=900, time_interval=1, linked_limits=[LinkedLimitWeightPair(PRIVATE_URL_POINTS_LIMIT_ID)]),
     RateLimit(limit_id=TICKER_PATH_URL, limit=900, time_interval=1, linked_limits=[LinkedLimitWeightPair(PUBLIC_URL_POINTS_LIMIT_ID)]),
-    RateLimit(limit_id=ORDER_BOOK_PATH_URL, limit=900, time_interval=1, linked_limits=[LinkedLimitWeightPair(PUBLIC_URL_POINTS_LIMIT_ID)])
+    RateLimit(limit_id=ORDER_BOOK_PATH_URL, limit=900, time_interval=1, linked_limits=[LinkedLimitWeightPair(PUBLIC_URL_POINTS_LIMIT_ID)]),
+    RateLimit(limit_id=MY_TRADES_PATH_URL, limit=900, time_interval=1, linked_limits=[LinkedLimitWeightPair(PRIVATE_URL_POINTS_LIMIT_ID)]),
 ]

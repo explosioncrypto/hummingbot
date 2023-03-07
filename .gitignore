@@ -61,16 +61,30 @@ debug.log
 .vscode/
 .history/
 
+# emacs files
+\#*\#
+.\#*
+
 # Documentation build dir
 /documentation/site/
 
-# Gateway API files
+# Cert files
 /certs
 *.pem
-gateway.env
 
 # Coverage
 .coverage
 /cover/
 /coverage_html_report/
 coverage.xml
+
+# misc
+*.srl
+*.key
+*.crt
+*.log
+
+# Debug console
+.debug_console_ssh_host_key
+
+/conf_backup

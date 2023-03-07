@@ -1,11 +1,15 @@
 import unittest
 from copy import deepcopy
 
+from hummingbot.client.settings import AllConnectorSettings
 from hummingbot.strategy.pure_market_making.pure_market_making_config_map import (
     pure_market_making_config_map as pmm_config_map,
     on_validate_price_source,
     validate_price_type,
     order_amount_prompt,
+    maker_trading_pair_prompt,
+    validate_price_source_exchange,
+    validate_decimal_list
 )
 
 
@@ -13,6 +17,7 @@ class TestPMMConfigMap(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.exchange = "binance"
         cls.base_asset = "COINALPHA"
         cls.quote_asset = "HBOT"
         cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
@@ -96,3 +101,28 @@ class TestPMMConfigMap(unittest.TestCase):
         expected = f"What is the amount of {self.base_asset} per order? >>> "
 
         self.assertEqual(expected, prompt)
+
+    def test_maker_trading_pair_prompt(self):
+        pmm_config_map["exchange"].value = self.exchange
+        example = AllConnectorSettings.get_example_pairs().get(self.exchange)
+
+        prompt = maker_trading_pair_prompt()
+        expected = f"Enter the token trading pair you would like to trade on {self.exchange} (e.g. {example}) >>> "
+
+        self.assertEqual(expected, prompt)
+
+    def test_validate_price_source_exchange(self):
+        pmm_config_map["exchange"].value = self.exchange
+        self.assertEqual(validate_price_source_exchange(value='binance'),
+                         'Price source exchange cannot be the same as maker exchange.')
+        self.assertIsNone(validate_price_source_exchange(value='kucoin'))
+        self.assertIsNone(validate_price_source_exchange(value='binance_perpetual'))
+
+    def test_validate_decimal_list(self):
+        error = validate_decimal_list(value="1")
+        self.assertIsNone(error)
+        error = validate_decimal_list(value="1,2")
+        self.assertIsNone(error)
+        error = validate_decimal_list(value="asd")
+        expected = "Please enter valid decimal numbers"
+        self.assertEqual(expected, error)

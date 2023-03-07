@@ -1,21 +1,18 @@
-from hummingbot.client.config.config_var import ConfigVar
-from hummingbot.client.config.config_validators import (
-    validate_market_trading_pair,
-    validate_connector,
-    validate_derivative,
-    validate_decimal,
-    validate_int
-)
-from hummingbot.client.settings import (
-    required_exchanges,
-    requried_connector_trading_pairs,
-    EXAMPLE_PAIRS,
-)
 from decimal import Decimal
+
+from hummingbot.client.config.config_validators import (
+    validate_connector,
+    validate_decimal,
+    validate_derivative,
+    validate_int,
+    validate_market_trading_pair,
+)
+from hummingbot.client.config.config_var import ConfigVar
+from hummingbot.client.settings import AllConnectorSettings, required_exchanges, requried_connector_trading_pairs
 
 
 def exchange_on_validated(value: str) -> None:
-    required_exchanges.append(value)
+    required_exchanges.add(value)
 
 
 def spot_market_validator(value: str) -> None:
@@ -38,14 +35,14 @@ def perpetual_market_on_validated(value: str) -> None:
 
 def spot_market_prompt() -> str:
     connector = spot_perpetual_arbitrage_config_map.get("spot_connector").value
-    example = EXAMPLE_PAIRS.get(connector)
+    example = AllConnectorSettings.get_example_pairs().get(connector)
     return "Enter the token trading pair you would like to trade on %s%s >>> " \
            % (connector, f" (e.g. {example})" if example else "")
 
 
 def perpetual_market_prompt() -> str:
     connector = spot_perpetual_arbitrage_config_map.get("perpetual_connector").value
-    example = EXAMPLE_PAIRS.get(connector)
+    example = AllConnectorSettings.get_example_pairs().get(connector)
     return "Enter the token trading pair you would like to trade on %s%s >>> " \
            % (connector, f" (e.g. {example})" if example else "")
 
@@ -63,7 +60,7 @@ spot_perpetual_arbitrage_config_map = {
         default="spot_perpetual_arbitrage"),
     "spot_connector": ConfigVar(
         key="spot_connector",
-        prompt="Enter a spot connector (Exchange/AMM) >>> ",
+        prompt="Enter a spot connector (Exchange/AMM/CLOB) >>> ",
         prompt_on_new=True,
         validator=validate_connector,
         on_validated=exchange_on_validated),
@@ -75,7 +72,7 @@ spot_perpetual_arbitrage_config_map = {
         on_validated=spot_market_on_validated),
     "perpetual_connector": ConfigVar(
         key="perpetual_connector",
-        prompt="Enter a derivative name (Exchange/AMM) >>> ",
+        prompt="Enter a derivative connector >>> ",
         prompt_on_new=True,
         validator=validate_derivative,
         on_validated=exchange_on_validated),

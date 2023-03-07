@@ -1,26 +1,21 @@
 from decimal import Decimal
+from typing import Optional
 
-from hummingbot.client.config.config_var import ConfigVar
+from hummingbot.client.config.client_config_map import using_exchange
 from hummingbot.client.config.config_validators import (
-    validate_exchange,
-    validate_market_trading_pair,
     validate_bool,
     validate_decimal,
-    validate_int
+    validate_exchange,
+    validate_int,
+    validate_market_trading_pair,
 )
-from hummingbot.client.settings import (
-    required_exchanges,
-    EXAMPLE_PAIRS,
-)
-from hummingbot.client.config.global_config_map import (
-    using_exchange
-)
-from typing import Optional
+from hummingbot.client.config.config_var import ConfigVar
+from hummingbot.client.settings import AllConnectorSettings, required_exchanges
 
 
 def maker_trading_pair_prompt():
     exchange = aroon_oscillator_config_map.get("exchange").value
-    example = EXAMPLE_PAIRS.get(exchange)
+    example = AllConnectorSettings.get_example_pairs().get(exchange)
     return "Enter the token trading pair you would like to trade on %s%s >>> " \
            % (exchange, f" (e.g. {example})" if example else "")
 
@@ -64,7 +59,7 @@ def on_validated_price_type(value: str):
 
 
 def exchange_on_validated(value: str):
-    required_exchanges.append(value)
+    required_exchanges.add(value)
 
 
 aroon_oscillator_config_map = {
