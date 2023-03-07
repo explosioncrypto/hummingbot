@@ -47,6 +47,10 @@ for key in connector_keys().keys():
 binance_api_key = os.getenv("BINANCE_API_KEY")
 binance_api_secret = os.getenv("BINANCE_API_SECRET")
 
+# Binance Perpetuals Tests
+binance_perpetuals_api_key = os.getenv("BINANCE_PERPETUALS_API_KEY")
+binance_perpetuals_api_secret = os.getenv("BINANCE_PERPETUALS_API_SECRET")
+
 # Coinbase Pro Tests
 coinbase_pro_api_key = os.getenv("COINBASE_PRO_API_KEY")
 coinbase_pro_secret_key = os.getenv("COINBASE_PRO_SECRET_KEY")
@@ -91,13 +95,23 @@ eterbase_api_key = os.getenv("ETERBASE_API_KEY")
 eterbase_secret_key = os.getenv("ETERBASE_SECRET_KEY")
 eterbase_account = os.getenv("ETERBASE_ACCOUNT")
 
+# OKEx Test
+okex_api_key = os.getenv("OKEX_API_KEY")
+okex_secret_key = os.getenv("OKEX_SECRET_KEY")
+okex_passphrase = os.getenv("OKEX_PASSPHRASE")
+
 # CryptoCom Test
 crypto_com_api_key = os.getenv("CRYPTO_COM_API_KEY")
 crypto_com_secret_key = os.getenv("CRYPTO_COM_SECRET_KEY")
 
-# Vitex Tests
-vitex_api_key = os.getenv("VITEX_API_KEY")
-vitex_secret_key = os.getenv("VITEX_SECRET_KEY")
+# HitBTC Tests
+hitbtc_api_key = os.getenv("HITBTC_API_KEY")
+hitbtc_secret_key = os.getenv("HITBTC_SECRET_KEY")
+
+# CoinZoom Test
+coinzoom_api_key = os.getenv("COINZOOM_API_KEY")
+coinzoom_secret_key = os.getenv("COINZOOM_SECRET_KEY")
+coinzoom_username = os.getenv("COINZOOM_USERNAME")
 
 # Wallet Tests
 test_erc20_token_address = os.getenv("TEST_ERC20_TOKEN_ADDRESS")

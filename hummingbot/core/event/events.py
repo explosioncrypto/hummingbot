@@ -34,6 +34,7 @@ class MarketEvent(Enum):
     TransactionFailure = 199
     BuyOrderCreated = 200
     SellOrderCreated = 201
+    FundingPaymentCompleted = 202
 
 
 class NewBlocksWatcherEvent(Enum):
@@ -71,12 +72,31 @@ class OrderType(Enum):
         return self in (OrderType.LIMIT, OrderType.LIMIT_MAKER)
 
 
+class PositionAction(Enum):
+    OPEN = "OPEN"
+    CLOSE = "CLOSE"
+
+
+# For Derivatives Exchanges
+class PositionSide(Enum):
+    LONG = "LONG"
+    SHORT = "SHORT"
+    BOTH = "BOTH"
+
+
+# For Derivatives Exchanges
+class PositionMode(Enum):
+    HEDGE = True
+    ONEWAY = False
+
+
 class PriceType(Enum):
     MidPrice = 1
     BestBid = 2
     BestAsk = 3
     LastTrade = 4
     LastOwnTrade = 5
+    InventoryCost = 6
 
 
 class MarketTransactionFailureEvent(NamedTuple):
@@ -184,6 +204,15 @@ class OrderExpiredEvent(NamedTuple):
     order_id: str
 
 
+@dataclass
+class FundingPaymentCompletedEvent:
+    timestamp: float
+    market: str
+    trading_pair: str
+    amount: Decimal
+    funding_rate: Decimal
+
+
 class MarketWithdrawAssetEvent(NamedTuple):
     timestamp: float
     tracking_id: str
@@ -218,6 +247,13 @@ class TradeFeeType(Enum):
     FlatFee = 2
 
 
+def interchangeable(token_a: str, token_b: str) -> bool:
+    interchangeable_tokens = {"WETH", "ETH", "WBTC", "BTC"}
+    if token_a == token_b:
+        return True
+    return {token_a, token_b} <= interchangeable_tokens
+
+
 class TradeFee(NamedTuple):
     percent: Decimal  # 0.1 = 10%
     flat_fees: List[Tuple[str, Decimal]] = []  # list of (asset, amount) ie: ("ETH", 0.05)
@@ -238,6 +274,18 @@ class TradeFee(NamedTuple):
              for fee_entry in data["flat_fees"]]
         )
 
+    def fee_amount_in_quote(self, trading_pair: str, price: Decimal, order_amount: Decimal):
+        fee_amount = Decimal("0")
+        if self.percent > 0:
+            fee_amount = (price * order_amount) * self.percent
+        base, quote = trading_pair.split("-")
+        for flat_fee in self.flat_fees:
+            if interchangeable(flat_fee[0], base):
+                fee_amount += (flat_fee[1] * price)
+            elif interchangeable(flat_fee[0], quote):
+                fee_amount += flat_fee[1]
+        return fee_amount
+
 
 class OrderBookTradeEvent(NamedTuple):
     trading_pair: str
@@ -257,6 +305,8 @@ class OrderFilledEvent(NamedTuple):
     amount: Decimal
     trade_fee: TradeFee
     exchange_trade_id: str = ""
+    leverage: Optional[int] = 1
+    position: Optional[str] = "NILL"
 
     @classmethod
     def order_filled_events_from_order_book_rows(cls,
@@ -301,6 +351,8 @@ class BuyOrderCreatedEvent:
     price: Decimal
     order_id: str
     exchange_order_id: Optional[str] = None
+    leverage: Optional[int] = 1
+    position: Optional[str] = "NILL"
 
 
 @dataclass
@@ -312,3 +364,5 @@ class SellOrderCreatedEvent:
     price: Decimal
     order_id: str
     exchange_order_id: Optional[str] = None
+    leverage: Optional[int] = 1
+    position: Optional[str] = "NILL"

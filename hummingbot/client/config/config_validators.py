@@ -1,70 +1,92 @@
-from typing import (
-    Optional,
-    Callable
-)
-import inspect
-
-RequiredIf = Callable[[str], Optional[bool]]
-Validator = Callable[[str], Optional[str]]
-Prompt = Callable[[str], Optional[str]]
-OnValidated = Callable
+from decimal import Decimal
+from typing import Optional
 
 
-class ConfigVar:
-    def __init__(self,
-                 key: str,
-                 prompt: Prompt,
-                 is_secure: bool = False,
-                 default: any = None,
-                 type_str: str = "str",
-                 # Whether this config will be prompted during the setup process
-                 required_if: RequiredIf = lambda: True,
-                 validator: Validator = lambda *args: None,
-                 on_validated: OnValidated = lambda *args: None,
-                 # Whether to prompt a user for value when new strategy config file is created
-                 prompt_on_new: bool = False,
-                 # Whether this is a config var used in connect command
-                 is_connect_key: bool = False,
-                 printable_key: str = None):
-        self.prompt = prompt
-        self.key = key
-        self.value = None
-        self.is_secure = is_secure
-        self.default = default
-        self.type = type_str
-        self._required_if = required_if
-        self._validator = validator
-        self._on_validated = on_validated
-        self.prompt_on_new = prompt_on_new
-        self.is_connect_key = is_connect_key
-        self.printable_key = printable_key
+# Validators
+def validate_exchange(value: str) -> Optional[str]:
+    from hummingbot.client.settings import EXCHANGES
+    if value not in EXCHANGES:
+        return f"Invalid exchange, please choose value from {EXCHANGES}"
 
-    async def get_prompt(self):
-        if inspect.iscoroutinefunction(self.prompt):
-            return await self.prompt()
-        elif inspect.isfunction(self.prompt):
-            return self.prompt()
-        else:
-            return self.prompt
 
-    @property
-    def required(self) -> bool:
-        assert callable(self._required_if)
-        return self._required_if()
+def validate_derivative(value: str) -> Optional[str]:
+    from hummingbot.client.settings import DERIVATIVES
+    if value not in DERIVATIVES:
+        return f"Invalid derivative, please choose value from {DERIVATIVES}"
 
-    async def validate(self, value: str) -> Optional[str]:
-        assert callable(self._validator)
-        assert callable(self._on_validated)
-        if self.required and (value is None or value == ""):
-            return "Value is required."
-        err_msg = None
-        if inspect.iscoroutinefunction(self._validator):
-            err_msg = await self._validator(value)
-        elif inspect.isfunction(self._validator):
-            err_msg = self._validator(value)
-        if err_msg is None and self._validator is not None:
-            if inspect.iscoroutinefunction(self._on_validated):
-                await self._on_validated(value)
-            elif inspect.isfunction(self._on_validated):
-                self._on_validated(value)
-        return err_msg
+
+def validate_connector(value: str) -> Optional[str]:
+    from hummingbot.client.settings import CONNECTOR_SETTINGS
+    if value not in CONNECTOR_SETTINGS:
+        return f"Invalid connector, please choose value from {CONNECTOR_SETTINGS.keys()}"
+
+
+def validate_strategy(value: str) -> Optional[str]:
+    from hummingbot.client.settings import STRATEGIES
+    if value not in STRATEGIES:
+        return f"Invalid strategy, please choose value from {STRATEGIES}"
+
+
+def validate_decimal(value: str, min_value: Decimal = None, max_value: Decimal = None, inclusive=True) -> Optional[str]:
+    try:
+        decimal_value = Decimal(value)
+    except Exception:
+        return f"{value} is not in decimal format."
+    if inclusive:
+        if min_value is not None and max_value is not None:
+            if not (Decimal(str(min_value)) <= decimal_value <= Decimal(str(max_value))):
+                return f"Value must be between {min_value} and {max_value}."
+        elif min_value is not None and not decimal_value >= Decimal(str(min_value)):
+            return f"Value cannot be less than {min_value}."
+        elif max_value is not None and not decimal_value <= Decimal(str(max_value)):
+            return f"Value cannot be more than {max_value}."
+    else:
+        if min_value is not None and max_value is not None:
+            if not (Decimal(str(min_value)) < decimal_value < Decimal(str(max_value))):
+                return f"Value must be between {min_value} and {max_value} (exclusive)."
+        elif min_value is not None and not decimal_value > Decimal(str(min_value)):
+            return f"Value must be more than {min_value}."
+        elif max_value is not None and not decimal_value < Decimal(str(max_value)):
+            return f"Value must be less than {max_value}."
+
+
+def validate_market_trading_pair(market: str, value: str) -> Optional[str]:
+    # Since trading pair validation and autocomplete are UI optimizations that do not impact bot performances,
+    # in case of network issues or slow wifi, this check returns true and does not prevent users from proceeding,
+    from hummingbot.core.utils.trading_pair_fetcher import TradingPairFetcher
+    trading_pair_fetcher: TradingPairFetcher = TradingPairFetcher.get_instance()
+    if trading_pair_fetcher.ready:
+        trading_pairs = trading_pair_fetcher.trading_pairs.get(market, [])
+        if len(trading_pairs) == 0:
+            return None
+        elif value not in trading_pairs:
+            return f"{value} is not an active market on {market}."
+
+
+def validate_bool(value: str) -> Optional[str]:
+    valid_values = ('true', 'yes', 'y', 'false', 'no', 'n')
+    if value.lower() not in valid_values:
+        return f"Invalid value, please choose value from {valid_values}"
+
+
+def validate_int(value: str, min_value: int = None, max_value: int = None, inclusive=True) -> Optional[str]:
+    try:
+        int_value = int(value)
+    except Exception:
+        return f"{value} is not in integer format."
+    if inclusive:
+        if min_value is not None and max_value is not None:
+            if not (min_value <= int_value <= max_value):
+                return f"Value must be between {min_value} and {max_value}."
+        elif min_value is not None and not int_value >= min_value:
+            return f"Value cannot be less than {min_value}."
+        elif max_value is not None and not int_value <= max_value:
+            return f"Value cannot be more than {max_value}."
+    else:
+        if min_value is not None and max_value is not None:
+            if not (min_value < int_value < max_value):
+                return f"Value must be between {min_value} and {max_value} (exclusive)."
+        elif min_value is not None and not int_value > min_value:
+            return f"Value must be more than {min_value}."
+        elif max_value is not None and not int_value < max_value:
+            return f"Value must be less than {max_value}."

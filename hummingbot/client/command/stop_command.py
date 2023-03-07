@@ -1,9 +1,9 @@
 import asyncio
 import platform
 import threading
-from hummingbot.core.utils.async_utils import safe_ensure_future
 from typing import TYPE_CHECKING
-
+from hummingbot.core.utils.async_utils import safe_ensure_future
+from hummingbot.core.rate_oracle.rate_oracle import RateOracle
 if TYPE_CHECKING:
     from hummingbot.client.hummingbot_application import HummingbotApplication
 
@@ -45,16 +45,19 @@ class StopCommand:
         if self.strategy_task is not None and not self.strategy_task.cancelled():
             self.strategy_task.cancel()
 
+        if RateOracle.get_instance().started:
+            RateOracle.get_instance().stop()
+
         if self.markets_recorder is not None:
             self.markets_recorder.stop()
 
         if self.kill_switch is not None:
             self.kill_switch.stop()
 
-        self.starting_balances.clear()
         self.wallet = None
         self.strategy_task = None
         self.strategy = None
         self.market_pair = None
         self.clock = None
         self.markets_recorder = None
+        self.market_trading_pairs_map.clear()

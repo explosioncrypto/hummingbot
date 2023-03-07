@@ -5,9 +5,9 @@ from hummingbot.user.user_balances import UserBalances
 from hummingbot.client.config.config_helpers import save_to_yml
 import hummingbot.client.settings as settings
 from hummingbot.market.celo.celo_cli import CeloCLI
+from hummingbot.connector.connector_status import get_connector_status
 import pandas as pd
 from typing import TYPE_CHECKING, Optional
-
 if TYPE_CHECKING:
     from hummingbot.client.hummingbot_application import HummingbotApplication
 
@@ -34,14 +34,19 @@ class ConnectCommand:
         self.app.hide_input = True
         if exchange == "kraken":
             self._notify("Reminder: Please ensure your Kraken API Key Nonce Window is at least 10.")
-        exchange_configs = [c for c in global_config_map.values() if exchange in c.key and c.is_connect_key]
+        exchange_configs = [c for c in global_config_map.values()
+                            if c.key in settings.CONNECTOR_SETTINGS[exchange].config_keys and c.is_connect_key]
         to_connect = True
         if Security.encrypted_file_exists(exchange_configs[0].key):
             await Security.wait_til_decryption_done()
-            api_key_config = [c for c in exchange_configs if "api_key" in c.key][0]
-            api_key = Security.decrypted_value(api_key_config.key)
-            answer = await self.app.prompt(prompt=f"Would you like to replace your existing {exchange} API key "
-                                                  f"{api_key} (Yes/No)? >>> ")
+            api_key_config = [c for c in exchange_configs if "api_key" in c.key]
+            if api_key_config:
+                api_key_config = api_key_config[0]
+                api_key = Security.decrypted_value(api_key_config.key)
+                prompt = f"Would you like to replace your existing {exchange} API key {api_key} (Yes/No)? >>> "
+            else:
+                prompt = f"Would you like to replace your existing {exchange_configs[0].key} (Yes/No)? >>> "
+            answer = await self.app.prompt(prompt=prompt)
             if self.app.to_stop_config:
                 self.app.to_stop_config = False
                 return
@@ -77,13 +82,14 @@ class ConnectCommand:
 
     async def connection_df(self  # type: HummingbotApplication
                             ):
-        columns = ["Exchange", "  Keys Added", "  Keys Confirmed"]
+        columns = ["Exchange", "  Keys Added", "  Keys Confirmed", "  Connector Status"]
         data = []
         failed_msgs = {}
         err_msgs = await UserBalances.instance().update_exchanges(reconnect=True)
         for option in sorted(OPTIONS):
             keys_added = "No"
             keys_confirmed = 'No'
+            status = get_connector_status(option)
             if option == "ethereum":
                 eth_address = global_config_map["ethereum_wallet"].value
                 if eth_address is not None and eth_address in Security.private_keys():
@@ -111,7 +117,7 @@ class ConnectCommand:
                         failed_msgs[option] = err_msg
                     else:
                         keys_confirmed = 'Yes'
-            data.append([option, keys_added, keys_confirmed])
+            data.append([option, keys_added, keys_confirmed, status])
         return pd.DataFrame(data=data, columns=columns), failed_msgs
 
     async def connect_ethereum(self,  # type: HummingbotApplication
