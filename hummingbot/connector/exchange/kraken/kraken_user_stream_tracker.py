@@ -5,6 +5,8 @@ import logging
 from typing import (
     Optional
 )
+
+from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.logger import HummingbotLogger
 from hummingbot.core.data_type.user_stream_tracker import UserStreamTracker
@@ -12,6 +14,7 @@ from hummingbot.core.utils.async_utils import (
     safe_ensure_future,
     safe_gather,
 )
+from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.connector.exchange.kraken.kraken_api_user_stream_data_source import KrakenAPIUserStreamDataSource
 from hummingbot.connector.exchange.kraken.kraken_auth import KrakenAuth
 
@@ -26,8 +29,12 @@ class KrakenUserStreamTracker(UserStreamTracker):
         return cls._krust_logger
 
     def __init__(self,
-                 kraken_auth: KrakenAuth):
+                 throttler: AsyncThrottler,
+                 kraken_auth: KrakenAuth,
+                 api_factory: Optional[WebAssistantsFactory] = None):
         super().__init__()
+        self._throttler = throttler
+        self._api_factory = api_factory
         self._ev_loop: asyncio.events.AbstractEventLoop = asyncio.get_event_loop()
         self._data_source: Optional[UserStreamTrackerDataSource] = None
         self._user_stream_tracking_task: Optional[asyncio.Task] = None
@@ -36,7 +43,7 @@ class KrakenUserStreamTracker(UserStreamTracker):
     @property
     def data_source(self) -> UserStreamTrackerDataSource:
         if not self._data_source:
-            self._data_source = KrakenAPIUserStreamDataSource(kraken_auth=self._kraken_auth)
+            self._data_source = KrakenAPIUserStreamDataSource(self._throttler, self._kraken_auth, self._api_factory)
         return self._data_source
 
     @property

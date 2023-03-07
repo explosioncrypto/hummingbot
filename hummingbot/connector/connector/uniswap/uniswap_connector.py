@@ -1,38 +1,40 @@
-import logging
-from decimal import Decimal
 import asyncio
-import aiohttp
-from typing import Dict, Any, List, Optional
-import json
-import time
-import ssl
 import copy
-from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
-from hummingbot.core.utils import async_ttl_cache
-from hummingbot.core.network_iterator import NetworkStatus
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
-from hummingbot.logger import HummingbotLogger
-from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
-from hummingbot.core.data_type.limit_order import LimitOrder
+import json
+import logging
+import ssl
+import time
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
+
+import aiohttp
+
+from hummingbot.client.config.fee_overrides_config_map import fee_overrides_config_map
+from hummingbot.client.config.global_config_map import global_config_map
+from hummingbot.client.settings import GATEAWAY_CA_CERT_PATH, GATEAWAY_CLIENT_CERT_PATH, GATEAWAY_CLIENT_KEY_PATH
+from hummingbot.connector.connector.uniswap.uniswap_in_flight_order import UniswapInFlightOrder
+from hummingbot.connector.connector_base import ConnectorBase
 from hummingbot.core.data_type.cancellation_result import CancellationResult
+from hummingbot.core.data_type.limit_order import LimitOrder
+from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
 from hummingbot.core.event.events import (
-    MarketEvent,
-    BuyOrderCreatedEvent,
-    SellOrderCreatedEvent,
     BuyOrderCompletedEvent,
-    SellOrderCompletedEvent,
+    BuyOrderCreatedEvent,
+    MarketEvent,
     MarketOrderFailureEvent,
     OrderFilledEvent,
     OrderType,
-    TradeType,
-    TradeFee
+    SellOrderCompletedEvent,
+    SellOrderCreatedEvent,
+    TradeType
 )
-from hummingbot.connector.connector_base import ConnectorBase
-from hummingbot.connector.connector.uniswap.uniswap_in_flight_order import UniswapInFlightOrder
-from hummingbot.client.settings import GATEAWAY_CA_CERT_PATH, GATEAWAY_CLIENT_CERT_PATH, GATEAWAY_CLIENT_KEY_PATH
-from hummingbot.client.config.global_config_map import global_config_map
+from hummingbot.core.network_iterator import NetworkStatus
+from hummingbot.core.utils import async_ttl_cache
+from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
 from hummingbot.core.utils.ethereum import check_transaction_exceptions, fetch_trading_pairs
-from hummingbot.client.config.fee_overrides_config_map import fee_overrides_config_map
+from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
+from hummingbot.logger import HummingbotLogger
+from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
 
 s_logger = None
 s_decimal_0 = Decimal("0")
@@ -79,7 +81,7 @@ class UniswapConnector(ConnectorBase):
         self._ev_loop = asyncio.get_event_loop()
         self._shared_client = None
         self._last_poll_timestamp = 0.0
-        self._last_balance_poll_timestamp = time.time()
+        self._last_balance_poll_timestamp = 0
         self._last_est_gas_cost_reported = 0
         self._in_flight_orders = {}
         self._allowances = {}
@@ -109,21 +111,23 @@ class UniswapConnector(ConnectorBase):
         """
         Initiate connector and start caching paths for trading_pairs
         """
-        try:
-            self.logger().info(f"Initializing Uniswap connector and paths for {self._trading_pairs} pairs.")
-            resp = await self._api_request("get", "eth/uniswap/start",
-                                           {"pairs": json.dumps(self._trading_pairs)})
-            status = bool(str(resp["success"]))
-            if bool(str(resp["success"])):
-                self._initiate_pool_status = status
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            self.logger().network(
-                f"Error initializing {self._trading_pairs} ",
-                exc_info=True,
-                app_warning_msg=str(e)
-            )
+        while True:
+            try:
+                # self.logger().info(f"Initializing Uniswap connector and paths for {self._trading_pairs} pairs.")
+                resp = await self._api_request("get", "eth/uniswap/start",
+                                               {"pairs": json.dumps(self._trading_pairs)})
+                status = bool(str(resp["success"]))
+                if status:
+                    self._initiate_pool_status = status
+                    await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger().network(
+                    f"Error initializing {self._trading_pairs} ",
+                    exc_info=True,
+                    app_warning_msg=str(e)
+                )
 
     async def auto_approve(self):
         """
@@ -135,7 +139,7 @@ class UniswapConnector(ConnectorBase):
         for token, amount in self._allowances.items():
             if amount <= s_decimal_0:
                 amount_approved = await self.approve_uniswap_spender(token)
-                if amount_approved > 0:
+                if amount_approved > s_decimal_0:
                     self._allowances[token] = amount_approved
                     await asyncio.sleep(2)
                 else:
@@ -217,9 +221,12 @@ class UniswapConnector(ConnectorBase):
                     self.logger().info(f"Warning! [{index+1}/{len(exceptions)}] {side} order - {exceptions[index]}")
 
                 if price is not None and len(exceptions) == 0:
-                    # TODO standardize quote price object to include price, fee, token, is fee part of quote.
-                    fee_overrides_config_map["uniswap_maker_fee_amount"].value = Decimal(str(gas_cost))
-                    fee_overrides_config_map["uniswap_taker_fee_amount"].value = Decimal(str(gas_cost))
+                    fee_overrides_config_map["uniswap_maker_fixed_fees"].value = [
+                        TokenAmount("ETH", Decimal(str(gas_cost)))
+                    ]
+                    fee_overrides_config_map["uniswap_taker_fixed_fees"].value = [
+                        TokenAmount("ETH", Decimal(str(gas_cost)))
+                    ]
                     return Decimal(str(price))
         except asyncio.CancelledError:
             raise
@@ -400,7 +407,9 @@ class UniswapConnector(ConnectorBase):
                                 tracked_order.order_type,
                                 Decimal(str(tracked_order.price)),
                                 Decimal(str(tracked_order.amount)),
-                                TradeFee(0.0, [(tracked_order.fee_asset, Decimal(str(fee)))]),
+                                AddedToCostTradeFee(
+                                    flat_fees=[TokenAmount(tracked_order.fee_asset, Decimal(str(fee)))]
+                                ),
                                 exchange_trade_id=order_id
                             )
                         )
@@ -566,29 +575,32 @@ class UniswapConnector(ConnectorBase):
         :param params: A dictionary of required params for the end point
         :returns A response in json format.
         """
-        base_url = f"https://{global_config_map['gateway_api_host'].value}:" \
-                   f"{global_config_map['gateway_api_port'].value}"
-        url = f"{base_url}/{path_url}"
-        client = await self._http_client()
-        if method == "get":
-            if len(params) > 0:
-                response = await client.get(url, params=params)
-            else:
-                response = await client.get(url)
-        elif method == "post":
-            params["privateKey"] = self._wallet_private_key
-            if params["privateKey"][:2] != "0x":
-                params["privateKey"] = "0x" + params["privateKey"]
-            response = await client.post(url, data=params)
+        try:
+            base_url = f"https://{global_config_map['gateway_api_host'].value}:" \
+                       f"{global_config_map['gateway_api_port'].value}"
+            url = f"{base_url}/{path_url}"
+            client = await self._http_client()
+            if method == "get":
+                if len(params) > 0:
+                    response = await client.get(url, params=params)
+                else:
+                    response = await client.get(url)
+            elif method == "post":
+                params["privateKey"] = self._wallet_private_key
+                if params["privateKey"][:2] != "0x":
+                    params["privateKey"] = "0x" + params["privateKey"]
+                response = await client.post(url, data=params)
 
-        parsed_response = json.loads(await response.text())
-        if response.status != 200:
-            err_msg = ""
+            parsed_response = json.loads(await response.text())
+            if response.status != 200:
+                err_msg = ""
+                if "error" in parsed_response:
+                    err_msg = f" Message: {parsed_response['error']}"
+                raise IOError(f"Error fetching data from {url}. HTTP status is {response.status}.{err_msg}")
             if "error" in parsed_response:
-                err_msg = f" Message: {parsed_response['error']}"
-            raise IOError(f"Error fetching data from {url}. HTTP status is {response.status}.{err_msg}")
-        if "error" in parsed_response:
-            raise Exception(f"Error: {parsed_response['error']} {parsed_response['message']}")
+                raise Exception(f"Error: {parsed_response['error']} {parsed_response['message']}")
+        except aiohttp.client_exceptions.ServerDisconnectedError:
+            self.logger().error("Unable to receive response from Gateway, connection timeout...")
 
         return parsed_response
 

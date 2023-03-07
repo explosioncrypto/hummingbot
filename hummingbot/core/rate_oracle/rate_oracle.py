@@ -1,21 +1,28 @@
 import asyncio
 import logging
+
+from decimal import Decimal
+from enum import Enum
 from typing import (
     Dict,
+    List,
     Optional,
-    List
 )
-from decimal import Decimal
+
 import aiohttp
-from enum import Enum
-from hummingbot.logger import HummingbotLogger
-from hummingbot.core.network_base import NetworkBase, NetworkStatus
-from hummingbot.core.utils.async_utils import safe_ensure_future
-from hummingbot.connector.exchange.binance.binance_utils import convert_from_exchange_trading_pair as \
-    binance_convert_from_exchange_pair
+
+import hummingbot.client.settings # noqa
+from hummingbot.connector.exchange.ascend_ex.ascend_ex_utils import convert_from_exchange_trading_pair as \
+    ascend_ex_convert_from_exchange_pair
+from hummingbot.connector.exchange.binance.binance_api_order_book_data_source import BinanceAPIOrderBookDataSource
+from hummingbot.connector.exchange.kucoin.kucoin_utils import convert_from_exchange_trading_pair as \
+    kucoin_convert_from_exchange_pair
+from hummingbot.core.network_base import NetworkBase
+from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.core.rate_oracle.utils import find_rate
-from hummingbot.core.utils.async_utils import safe_gather
 from hummingbot.core.utils import async_ttl_cache
+from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.logger import HummingbotLogger
 
 
 class RateOracleSource(Enum):
@@ -24,6 +31,8 @@ class RateOracleSource(Enum):
     """
     binance = 0
     coingecko = 1
+    kucoin = 2
+    ascend_ex = 3
 
 
 class RateOracle(NetworkBase):
@@ -47,6 +56,8 @@ class RateOracle(NetworkBase):
     coingecko_usd_price_url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency={}&order=market_cap_desc" \
                               "&per_page=250&page={}&sparkline=false"
     coingecko_supported_vs_tokens_url = "https://api.coingecko.com/api/v3/simple/supported_vs_currencies"
+    kucoin_price_url = "https://api.kucoin.com/api/v1/market/allTickers"
+    ascend_ex_price_url = "https://ascendex.com/api/pro/v1/ticker"
 
     @classmethod
     def get_instance(cls) -> "RateOracle":
@@ -67,6 +78,9 @@ class RateOracle(NetworkBase):
         self._prices: Dict[str, Decimal] = {}
         self._fetch_price_task: Optional[asyncio.Task] = None
         self._ready_event = asyncio.Event()
+
+    def __str__(self):
+        return f"{self.source.name.title()} rate oracle"
 
     @classmethod
     async def _http_client(cls) -> aiohttp.ClientSession:
@@ -164,6 +178,10 @@ class RateOracle(NetworkBase):
             return await cls.get_binance_prices()
         elif cls.source == RateOracleSource.coingecko:
             return await cls.get_coingecko_prices(cls.global_token)
+        elif cls.source == RateOracleSource.kucoin:
+            return await cls.get_kucoin_prices()
+        elif cls.source == RateOracleSource.ascend_ex:
+            return await cls.get_ascend_ex_prices()
         else:
             raise NotImplementedError
 
@@ -177,11 +195,11 @@ class RateOracle(NetworkBase):
         """
         results = {}
         tasks = [cls.get_binance_prices_by_domain(cls.binance_price_url),
-                 cls.get_binance_prices_by_domain(cls.binance_us_price_url, "USD")]
+                 cls.get_binance_prices_by_domain(cls.binance_us_price_url, "USD", domain="us")]
         task_results = await safe_gather(*tasks, return_exceptions=True)
         for task_result in task_results:
             if isinstance(task_result, Exception):
-                cls.logger().error("Unexpected error while retrieving rates from Coingecko. "
+                cls.logger().error("Unexpected error while retrieving rates from Binance. "
                                    "Check the log file for more info.")
                 break
             else:
@@ -189,26 +207,73 @@ class RateOracle(NetworkBase):
         return results
 
     @classmethod
-    async def get_binance_prices_by_domain(cls, url: str, quote_symbol: str = None) -> Dict[str, Decimal]:
+    async def get_binance_prices_by_domain(cls,
+                                           url: str,
+                                           quote_symbol: str = None,
+                                           domain: str = "com") -> Dict[str, Decimal]:
         """
         Fetches binance prices
         :param url: A URL end point
         :param quote_symbol: A quote symbol, if specified only pairs with the quote symbol are included for prices
-        :return A dictionary of trading pairs and prices
+        :param domain: The Binance domain to query. It could be 'com' or 'us'
+        :return: A dictionary of trading pairs and prices
         """
         results = {}
         client = await cls._http_client()
         async with client.request("GET", url) as resp:
             records = await resp.json()
             for record in records:
-                trading_pair = binance_convert_from_exchange_pair(record["symbol"])
+                try:
+                    trading_pair = await BinanceAPIOrderBookDataSource.trading_pair_associated_to_exchange_symbol(
+                        record["symbol"], domain=domain)
+                except KeyError:
+                    # Ignore results for which their symbols is not tracked by the Binance connector
+                    continue
                 if quote_symbol is not None:
                     base, quote = trading_pair.split("-")
                     if quote != quote_symbol:
                         continue
-                if trading_pair and record["bidPrice"] is not None and record["askPrice"] is not None:
-                    results[trading_pair] = (Decimal(record["bidPrice"]) + Decimal(record["askPrice"])) / Decimal(
-                        "2")
+                if (trading_pair and record["bidPrice"] is not None
+                        and record["askPrice"] is not None
+                        and Decimal(record["bidPrice"]) > 0
+                        and Decimal(record["askPrice"])):
+                    results[trading_pair] = ((Decimal(record["bidPrice"]) + Decimal(record["askPrice"]))
+                                             / Decimal("2"))
+
+        return results
+
+    @classmethod
+    @async_ttl_cache(ttl=1, maxsize=1)
+    async def get_kucoin_prices(cls) -> Dict[str, Decimal]:
+        """
+        Fetches Kucoin mid prices from their allTickers endpoint.
+        :return A dictionary of trading pairs and prices
+        """
+        results = {}
+        client = await cls._http_client()
+        async with client.request("GET", cls.kucoin_price_url) as resp:
+            records = await resp.json(content_type=None)
+            for record in records["data"]["ticker"]:
+                pair = kucoin_convert_from_exchange_pair(record["symbolName"])
+                if Decimal(record["buy"]) > 0 and Decimal(record["sell"]) > 0:
+                    results[pair] = (Decimal(str(record["buy"])) + Decimal(str(record["sell"]))) / Decimal("2")
+        return results
+
+    @classmethod
+    @async_ttl_cache(ttl=1, maxsize=1)
+    async def get_ascend_ex_prices(cls) -> Dict[str, Decimal]:
+        """
+        Fetches Ascend Ex mid prices from their ticker endpoint.
+        :return A dictionary of trading pairs and prices
+        """
+        results = {}
+        client = await cls._http_client()
+        async with client.request("GET", cls.ascend_ex_price_url) as resp:
+            records = await resp.json(content_type=None)
+            for record in records["data"]:
+                pair = ascend_ex_convert_from_exchange_pair(record["symbol"])
+                if Decimal(record["ask"][0]) > 0 and Decimal(record["bid"][0]) > 0:
+                    results[pair] = (Decimal(str(record["ask"][0])) + Decimal(str(record["bid"][0]))) / Decimal("2")
         return results
 
     @classmethod
@@ -252,7 +317,7 @@ class RateOracle(NetworkBase):
         results = {}
         client = await cls._http_client()
         async with client.request("GET", cls.coingecko_usd_price_url.format(vs_currency, page_no)) as resp:
-            records = await resp.json()
+            records = await resp.json(content_type=None)
             for record in records:
                 pair = f'{record["symbol"].upper()}-{vs_currency.upper()}'
                 if record["current_price"]:
