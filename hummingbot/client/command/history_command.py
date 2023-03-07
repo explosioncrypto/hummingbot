@@ -1,25 +1,33 @@
-import asyncio
+from decimal import Decimal
+import pandas as pd
 import threading
 import time
+from typing import (
+    Set,
+    Tuple,
+    TYPE_CHECKING,
+    List,
+    Optional
+)
 from datetime import datetime
-from decimal import Decimal
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple
-
-import pandas as pd
-
-from hummingbot.client.performance import PerformanceMetrics
-from hummingbot.client.settings import MAXIMUM_TRADE_FILLS_DISPLAY_OUTPUT, AllConnectorSettings
-from hummingbot.client.ui.interface_utils import format_df_for_printout
-from hummingbot.core.utils.async_utils import safe_ensure_future
+from hummingbot.client.config.global_config_map import global_config_map
+from hummingbot.client.settings import (
+    MAXIMUM_TRADE_FILLS_DISPLAY_OUTPUT,
+    CONNECTOR_SETTINGS,
+    ConnectorType,
+    DERIVATIVES
+)
 from hummingbot.model.trade_fill import TradeFill
 from hummingbot.user.user_balances import UserBalances
+from hummingbot.core.utils.async_utils import safe_ensure_future
+from hummingbot.client.performance import PerformanceMetrics
 
 s_float_0 = float(0)
 s_decimal_0 = Decimal("0")
 
 
 if TYPE_CHECKING:
-    from hummingbot.client.hummingbot_application import HummingbotApplication  # noqa: F401
+    from hummingbot.client.hummingbot_application import HummingbotApplication
 
 
 def get_timestamp(days_ago: float = 0.) -> float:
@@ -33,36 +41,24 @@ class HistoryCommand:
                 precision: Optional[int] = None
                 ):
         if threading.current_thread() != threading.main_thread():
-            self.ev_loop.call_soon_threadsafe(self.history, days, verbose, precision)
+            self.ev_loop.call_soon_threadsafe(self.history)
             return
 
         if self.strategy_file_name is None:
-            self.notify("\n  Please first import a strategy config file of which to show historical performance.")
+            self._notify("\n  Please first import a strategy config file of which to show historical performance.")
             return
+        if global_config_map.get("paper_trade_enabled").value:
+            self._notify("\n  Paper Trading ON: All orders are simulated, and no real orders are placed.")
         start_time = get_timestamp(days) if days > 0 else self.init_time
-        with self.trade_fill_db.get_new_session() as session:
-            trades: List[TradeFill] = self._get_trades_from_session(
-                int(start_time * 1e3),
-                session=session,
-                config_file_path=self.strategy_file_name)
-            if not trades:
-                self.notify("\n  No past trades to report.")
-                return
-            if verbose:
-                self.list_trades(start_time)
+        trades: List[TradeFill] = self._get_trades_from_session(int(start_time * 1e3),
+                                                                config_file_path=self.strategy_file_name)
+        if not trades:
+            self._notify("\n  No past trades to report.")
+            return
+        if verbose:
+            self.list_trades(start_time)
+        if self.strategy_name != "celo_arb":
             safe_ensure_future(self.history_report(start_time, trades, precision))
-
-    def get_history_trades_json(self,  # type: HummingbotApplication
-                                days: float = 0):
-        if self.strategy_file_name is None:
-            return
-        start_time = get_timestamp(days) if days > 0 else self.init_time
-        with self.trade_fill_db.get_new_session() as session:
-            trades: List[TradeFill] = self._get_trades_from_session(
-                int(start_time * 1e3),
-                session=session,
-                config_file_path=self.strategy_file_name)
-            return list([TradeFill.to_bounty_api_json(t) for t in trades])
 
     async def history_report(self,  # type: HummingbotApplication
                              start_time: float,
@@ -75,21 +71,14 @@ class HistoryCommand:
         return_pcts = []
         for market, symbol in market_info:
             cur_trades = [t for t in trades if t.market == market and t.symbol == symbol]
-            network_timeout = float(self.client_config_map.commands_timeout.other_commands_timeout)
-            try:
-                cur_balances = await asyncio.wait_for(self.get_current_balances(market), network_timeout)
-            except asyncio.TimeoutError:
-                self.notify(
-                    "\nA network error prevented the balances retrieval to complete. See logs for more details."
-                )
-                raise
-            perf = await PerformanceMetrics.create(symbol, cur_trades, cur_balances)
+            cur_balances = await self.get_current_balances(market)
+            perf = await PerformanceMetrics.create(market, symbol, cur_trades, cur_balances)
             if display_report:
                 self.report_performance_by_market(market, symbol, perf, precision)
             return_pcts.append(perf.return_pct)
         avg_return = sum(return_pcts) / len(return_pcts) if len(return_pcts) > 0 else s_decimal_0
         if display_report and len(return_pcts) > 1:
-            self.notify(f"\nAveraged Return = {avg_return:.2%}")
+            self._notify(f"\nAveraged Return = {avg_return:.2%}")
         return avg_return
 
     async def get_current_balances(self,  # type: HummingbotApplication
@@ -97,13 +86,20 @@ class HistoryCommand:
         if market in self.markets and self.markets[market].ready:
             return self.markets[market].get_all_balances()
         elif "Paper" in market:
-            paper_balances = self.client_config_map.paper_trade.paper_trade_account_balance
+            paper_balances = global_config_map["paper_trade_account_balance"].value
             if paper_balances is None:
                 return {}
             return {token: Decimal(str(bal)) for token, bal in paper_balances.items()}
+        elif "perpetual_finance" == market:
+            return await UserBalances.xdai_balances()
         else:
-            await UserBalances.instance().update_exchange_balance(market, self.client_config_map)
-            return UserBalances.instance().all_balances(market)
+            gateway_eth_connectors = [cs.name for cs in CONNECTOR_SETTINGS.values() if cs.use_ethereum_wallet and
+                                      cs.type == ConnectorType.Connector]
+            if market in gateway_eth_connectors:
+                return await UserBalances.instance().eth_n_erc20_balances()
+            else:
+                await UserBalances.instance().update_exchange_balance(market)
+                return UserBalances.instance().all_balances(market)
 
     def report_header(self,  # type: HummingbotApplication
                       start_time: float):
@@ -114,7 +110,7 @@ class HistoryCommand:
             [f"Current Time: {datetime.fromtimestamp(current_time).strftime('%Y-%m-%d %H:%M:%S')}"] +
             [f"Duration: {pd.Timedelta(seconds=int(current_time - start_time))}"]
         )
-        self.notify("\n".join(lines))
+        self._notify("\n".join(lines))
 
     def report_performance_by_market(self,  # type: HummingbotApplication
                                      market: str,
@@ -148,7 +144,7 @@ class HistoryCommand:
 
         assets_columns = ["", "start", "current", "change"]
         assets_data = [
-            [f"{base:<17}", "-", "-", "-"] if market in AllConnectorSettings.get_derivative_names() else  # No base asset for derivatives because they are margined
+            [f"{base:<17}", "-", "-", "-"] if market in DERIVATIVES else  # No base asset for derivatives because they are margined
             [f"{base:<17}",
              PerformanceMetrics.smart_round(perf.start_base_bal, precision),
              PerformanceMetrics.smart_round(perf.cur_base_bal, precision),
@@ -161,7 +157,7 @@ class HistoryCommand:
              PerformanceMetrics.smart_round(perf.start_price),
              PerformanceMetrics.smart_round(perf.cur_price),
              PerformanceMetrics.smart_round(perf.cur_price - perf.start_price)],
-            [f"{'Base asset %':<17}", "-", "-", "-"] if market in AllConnectorSettings.get_derivative_names() else  # No base asset for derivatives because they are margined
+            [f"{'Base asset %':<17}", "-", "-", "-"] if market in DERIVATIVES else  # No base asset for derivatives because they are margined
             [f"{'Base asset %':<17}",
              f"{perf.start_base_ratio_pct:.2%}",
              f"{perf.cur_base_ratio_pct:.2%}",
@@ -187,7 +183,7 @@ class HistoryCommand:
         lines.extend(["", "  Performance:"] +
                      ["    " + line for line in perf_df.to_string(index=False, header=False).split("\n")])
 
-        self.notify("\n".join(lines))
+        self._notify("\n".join(lines))
 
     async def calculate_profitability(self,  # type: HummingbotApplication
                                       ) -> Decimal:
@@ -202,13 +198,9 @@ class HistoryCommand:
             return s_decimal_0
 
         start_time = self.init_time
-
-        with self.trade_fill_db.get_new_session() as session:
-            trades: List[TradeFill] = self._get_trades_from_session(
-                int(start_time * 1e3),
-                session=session,
-                config_file_path=self.strategy_file_name)
-            avg_return = await self.history_report(start_time, trades, display_report=False)
+        trades: List[TradeFill] = self._get_trades_from_session(int(start_time * 1e3),
+                                                                config_file_path=self.strategy_file_name)
+        avg_return = await self.history_report(start_time, trades, display_report=False)
         return avg_return
 
     def list_trades(self,  # type: HummingbotApplication
@@ -218,24 +210,24 @@ class HistoryCommand:
             return
 
         lines = []
-
-        with self.trade_fill_db.get_new_session() as session:
-            queried_trades: List[TradeFill] = self._get_trades_from_session(
-                int(start_time * 1e3),
-                session=session,
-                number_of_rows=MAXIMUM_TRADE_FILLS_DISPLAY_OUTPUT + 1,
-                config_file_path=self.strategy_file_name)
-            df: pd.DataFrame = TradeFill.to_pandas(queried_trades)
+        queried_trades: List[TradeFill] = self._get_trades_from_session(int(start_time * 1e3),
+                                                                        MAXIMUM_TRADE_FILLS_DISPLAY_OUTPUT + 1,
+                                                                        self.strategy_file_name)
+        if self.strategy_name == "celo_arb":
+            celo_trades = self.strategy.celo_orders_to_trade_fills()
+            queried_trades = queried_trades + celo_trades
+        df: pd.DataFrame = TradeFill.to_pandas(queried_trades)
 
         if len(df) > 0:
             # Check if number of trades exceed maximum number of trades to display
             if len(df) > MAXIMUM_TRADE_FILLS_DISPLAY_OUTPUT:
-                df = df[:MAXIMUM_TRADE_FILLS_DISPLAY_OUTPUT]
-                self.notify(
+                df_lines = str(df[:MAXIMUM_TRADE_FILLS_DISPLAY_OUTPUT]).split("\n")
+                self._notify(
                     f"\n  Showing last {MAXIMUM_TRADE_FILLS_DISPLAY_OUTPUT} trades in the current session.")
-            df_lines = format_df_for_printout(df, self.client_config_map.tables_format).split("\n")
+            else:
+                df_lines = str(df).split("\n")
             lines.extend(["", "  Recent trades:"] +
                          ["    " + line for line in df_lines])
         else:
             lines.extend(["\n  No past trades in this session."])
-        self.notify("\n".join(lines))
+        self._notify("\n".join(lines))

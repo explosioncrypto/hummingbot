@@ -38,7 +38,6 @@ __pycache__
 /hummingbot/wallet/*.cpp
 /hummingbot/wallet/ethereum/*.c
 /hummingbot/wallet/ethereum/*.cpp
-/test/**/*.cpp
 /build
 
 # Local files
@@ -61,30 +60,15 @@ debug.log
 .vscode/
 .history/
 
-# emacs files
-\#*\#
-.\#*
-
 # Documentation build dir
 /documentation/site/
 
-# Cert files
+# Gateway API files
 /certs
 *.pem
+gateway.env
 
 # Coverage
 .coverage
 /cover/
-/coverage_html_report/
 coverage.xml
-
-# misc
-*.srl
-*.key
-*.crt
-*.log
-
-# Debug console
-.debug_console_ssh_host_key
-
-/conf_backup

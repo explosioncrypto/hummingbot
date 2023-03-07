@@ -1,11 +1,12 @@
+#!/usr/bin/env python
+
+from setuptools import setup
+from setuptools.command.build_ext import build_ext
+from Cython.Build import cythonize
+import numpy as np
 import os
 import subprocess
 import sys
-
-import numpy as np
-from setuptools import find_packages, setup
-from setuptools.command.build_ext import build_ext
-from Cython.Build import cythonize
 
 is_posix = (os.name == "posix")
 
@@ -21,7 +22,7 @@ if os.environ.get('WITHOUT_CYTHON_OPTIMIZATIONS'):
 
 
 # Avoid a gcc warning below:
-# cc1plus: warning: command line option ???-Wstrict-prototypes??? is valid
+# cc1plus: warning: command line option ‘-Wstrict-prototypes’ is valid
 # for C/ObjC but not for C++
 class BuildExt(build_ext):
     def build_extensions(self):
@@ -32,72 +33,118 @@ class BuildExt(build_ext):
 
 def main():
     cpu_count = os.cpu_count() or 8
-    version = "20230227"
-    packages = find_packages(include=["hummingbot", "hummingbot.*"])
+    version = "20210616"
+    packages = [
+        "hummingbot",
+        "hummingbot.client",
+        "hummingbot.client.command",
+        "hummingbot.client.config",
+        "hummingbot.client.ui",
+        "hummingbot.core",
+        "hummingbot.core.data_type",
+        "hummingbot.core.event",
+        "hummingbot.core.management",
+        "hummingbot.core.utils",
+        "hummingbot.core.rate_oracle",
+        "hummingbot.data_feed",
+        "hummingbot.logger",
+        "hummingbot.market",
+        "hummingbot.connector",
+        "hummingbot.connector.connector",
+        "hummingbot.connector.connector.balancer",
+        "hummingbot.connector.connector.terra",
+        "hummingbot.connector.exchange",
+        "hummingbot.connector.exchange.ascend_ex",
+        "hummingbot.connector.exchange.binance",
+        "hummingbot.connector.exchange.bitfinex",
+        "hummingbot.connector.exchange.bittrex",
+        "hummingbot.connector.exchange.bamboo_relay",
+        "hummingbot.connector.exchange.coinbase_pro",
+        "hummingbot.connector.exchange.coinzoom",
+        "hummingbot.connector.exchange.dydx",
+        "hummingbot.connector.exchange.huobi",
+        "hummingbot.connector.exchange.radar_relay",
+        "hummingbot.connector.exchange.kraken",
+        "hummingbot.connector.exchange.crypto_com",
+        "hummingbot.connector.exchange.kucoin",
+        "hummingbot.connector.exchange.loopring",
+        "hummingbot.connector.exchange.okex",
+        "hummingbot.connector.exchange.liquid",
+        "hummingbot.connector.exchange.dolomite",
+        "hummingbot.connector.exchange.eterbase",
+        "hummingbot.connector.exchange.beaxy",
+        "hummingbot.connector.exchange.hitbtc",
+        "hummingbot.connector.exchange.k2",
+        "hummingbot.connector.derivative",
+        "hummingbot.connector.derivative.binance_perpetual",
+        "hummingbot.script",
+        "hummingbot.strategy",
+        "hummingbot.strategy.amm_arb",
+        "hummingbot.strategy.arbitrage",
+        "hummingbot.strategy.cross_exchange_market_making",
+        "hummingbot.strategy.pure_market_making",
+        "hummingbot.strategy.perpetual_market_making",
+        "hummingbot.strategy.avellaneda_market_making",
+        "hummingbot.strategy.__utils__",
+        "hummingbot.strategy.__utils__.trailing_indicators",
+        "hummingbot.templates",
+        "hummingbot.wallet",
+        "hummingbot.wallet.ethereum",
+        "hummingbot.wallet.ethereum.watcher",
+        "hummingbot.wallet.ethereum.zero_ex",
+    ]
     package_data = {
         "hummingbot": [
             "core/cpp/*",
+            "wallet/ethereum/zero_ex/*.json",
+            "wallet/ethereum/token_abi/*.json",
+            "wallet/ethereum/erc20_tokens.json",
+            "wallet/ethereum/erc20_tokens_kovan.json",
             "VERSION",
             "templates/*TEMPLATE.yml"
         ],
     }
     install_requires = [
-        "0x-contract-addresses",
-        "0x-contract-wrappers",
-        "0x-order-utils",
         "aioconsole",
-        "aiohttp",
         "aiokafka",
-        "appdirs",
-        "appnope",
-        "async-timeout",
-        "bidict",
-        "cachetools",
-        "certifi",
-        "cryptography",
-        "cython",
+        "attrdict",
         "cytoolz",
-        "docker",
-        "diff-cover",
-        "dydx-python",
-        "dydx-v3-python",
         "eth-abi",
         "eth-account",
         "eth-bloom",
+        "eth-hash",
         "eth-keyfile",
-        "eth-typing",
+        "eth-keys",
+        "eth-rlp",
         "eth-utils",
-        "ethsnarks-loopring",
-        "flake8",
         "hexbytes",
-        "importlib-metadata",
-        "mypy-extensions",
-        "nose",
-        "nose-exclude",
-        "numpy",
-        "pandas",
-        "pip",
-        "pre-commit",
-        "prompt-toolkit",
-        "psutil",
-        "pydantic",
-        "pyjwt",
-        "pyperclip",
-        "python-dateutil",
-        "python-telegram-bot",
+        "kafka-python",
+        "lru-dict",
+        "parsimonious",
+        "pycryptodome",
         "requests",
-        "rsa",
-        "ruamel-yaml",
-        "scipy",
-        "signalr-client-aio",
-        "simplejson",
-        "six",
-        "sqlalchemy",
-        "tabulate",
+        "rlp",
+        "toolz",
         "tzlocal",
-        "ujson",
+        "urllib3",
         "web3",
         "websockets",
+        "aiohttp",
+        "async-timeout",
+        "attrs",
+        "certifi",
+        "chardet",
+        "cython==0.29.23",
+        "idna",
+        "idna_ssl",
+        "multidict",
+        "numpy",
+        "pandas",
+        "pytz",
+        "pyyaml",
+        "python-binance==0.7.5",
+        "sqlalchemy",
+        "ujson",
         "yarl",
     ]
 
@@ -105,8 +152,6 @@ def main():
         "language": "c++",
         "language_level": 3,
     }
-
-    cython_sources = ["hummingbot/**/*.pyx"]
 
     if os.environ.get('WITHOUT_CYTHON_OPTIMIZATIONS'):
         compiler_directives = {
@@ -132,14 +177,14 @@ def main():
     setup(name="hummingbot",
           version=version,
           description="Hummingbot",
-          url="https://github.com/hummingbot/hummingbot",
+          url="https://github.com/CoinAlpha/hummingbot",
           author="CoinAlpha, Inc.",
           author_email="dev@hummingbot.io",
           license="Apache 2.0",
           packages=packages,
           package_data=package_data,
           install_requires=install_requires,
-          ext_modules=cythonize(cython_sources, compiler_directives=compiler_directives, **cython_kwargs),
+          ext_modules=cythonize(["hummingbot/**/*.pyx"], compiler_directives=compiler_directives, **cython_kwargs),
           include_dirs=[
               np.get_include()
           ],

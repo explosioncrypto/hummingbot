@@ -1,71 +1,49 @@
-import asyncio
 import unittest
-from copy import deepcopy
 from decimal import Decimal
-from typing import Awaitable, Dict, Optional
-
-from hummingbot.client.config.client_config_map import ClientConfigMap
-from hummingbot.client.config.config_helpers import ClientConfigAdapter
-from hummingbot.connector.utils import combine_to_hb_trading_pair
-from hummingbot.core.rate_oracle.rate_oracle import RateOracle
-from hummingbot.core.rate_oracle.sources.coin_gecko_rate_source import CoinGeckoRateSource
-from hummingbot.core.rate_oracle.sources.rate_source_base import RateSourceBase
+import asyncio
 from hummingbot.core.rate_oracle.utils import find_rate
-
-
-class DummyRateSource(RateSourceBase):
-    def __init__(self, price_dict: Dict[str, Decimal]):
-        self._price_dict = price_dict
-
-    @property
-    def name(self):
-        return "dummy_rate_source"
-
-    async def get_prices(self, quote_token: Optional[str] = None) -> Dict[str, Decimal]:
-        return deepcopy(self._price_dict)
+from hummingbot.core.rate_oracle.rate_oracle import RateOracle
 
 
 class RateOracleTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.ev_loop = asyncio.get_event_loop()
-        cls.target_token = "COINALPHA"
-        cls.global_token = "HBOT"
-        cls.trading_pair = combine_to_hb_trading_pair(base=cls.target_token, quote=cls.global_token)
-
-    def setUp(self) -> None:
-        if RateOracle._shared_instance is not None:
-            RateOracle._shared_instance.stop()
-        RateOracle._shared_instance = None
-
-    def tearDown(self) -> None:
-        RateOracle._shared_instance = None
-
-    def async_run_with_timeout(self, coroutine: Awaitable, timeout: int = 1):
-        ret = asyncio.get_event_loop().run_until_complete(asyncio.wait_for(coroutine, timeout))
-        return ret
 
     def test_find_rate_from_source(self):
-        expected_rate = Decimal("10")
-        rate_oracle = RateOracle(source=DummyRateSource(price_dict={self.trading_pair: expected_rate}))
+        asyncio.get_event_loop().run_until_complete(self._test_find_rate_from_source())
 
-        rate = self.async_run_with_timeout(rate_oracle.rate_async(self.trading_pair))
-        self.assertEqual(expected_rate, rate)
+    async def _test_find_rate_from_source(self):
+        rate = await RateOracle.rate_async("BTC-USDT")
+        print(rate)
+        self.assertGreater(rate, 100)
+
+    def test_get_rate_coingecko(self):
+        asyncio.get_event_loop().run_until_complete(self._test_get_rate_coingecko())
+
+    async def _test_get_rate_coingecko(self):
+        rates = await RateOracle.get_coingecko_prices_by_page("USD", 1)
+        print(rates)
+        self.assertGreater(len(rates), 100)
+        rates = await RateOracle.get_coingecko_prices("USD")
+        print(rates)
+        self.assertGreater(len(rates), 700)
 
     def test_rate_oracle_network(self):
-        expected_rate = Decimal("10")
-        rate_oracle = RateOracle(source=DummyRateSource(price_dict={self.trading_pair: expected_rate}))
-
-        rate_oracle.start()
-        self.async_run_with_timeout(rate_oracle.get_ready())
-        self.assertGreater(len(rate_oracle.prices), 0)
-        rate = rate_oracle.get_pair_rate(self.trading_pair)
-        self.assertEqual(expected_rate, rate)
-
-        self.async_run_with_timeout(rate_oracle.stop_network())
-
-        self.assertEqual(0, len(rate_oracle.prices))
+        oracle = RateOracle.get_instance()
+        oracle.start()
+        asyncio.get_event_loop().run_until_complete(oracle.get_ready())
+        print(oracle.prices)
+        self.assertGreater(len(oracle.prices), 0)
+        rate = oracle.rate("SCRT-USDT")
+        print(f"rate SCRT-USDT: {rate}")
+        self.assertGreater(rate, 0)
+        rate1 = oracle.rate("BTC-USDT")
+        print(f"rate BTC-USDT: {rate1}")
+        self.assertGreater(rate1, 100)
+        # wait for 5 s to check rate again
+        asyncio.get_event_loop().run_until_complete(asyncio.sleep(5))
+        rate2 = oracle.rate("BTC-USDT")
+        print(f"rate BTC-USDT: {rate2}")
+        self.assertNotEqual(0, rate2)
+        oracle.stop()
 
     def test_find_rate(self):
         prices = {"HBOT-USDT": Decimal("100"), "AAVE-USDT": Decimal("50"), "USDT-GBP": Decimal("0.75")}
@@ -82,22 +60,19 @@ class RateOracleTest(unittest.TestCase):
         rate = find_rate(prices, "HBOT-GBP")
         self.assertEqual(rate, Decimal("75"))
 
-    def test_rate_oracle_single_instance_rate_source_reset_after_configuration_change(self):
-        config_map = ClientConfigAdapter(ClientConfigMap())
-        config_map.rate_oracle_source = "binance"
-        rate_oracle = RateOracle.get_instance()
-        config_map.rate_oracle_source = "coin_gecko"
-        self.assertEqual(type(rate_oracle.source), CoinGeckoRateSource)
+    def test_get_binance_prices(self):
+        asyncio.get_event_loop().run_until_complete(self._test_get_binance_prices())
 
-    def test_rate_oracle_single_instance_prices_reset_after_global_token_change(self):
-        config_map = ClientConfigAdapter(ClientConfigMap())
-
-        rate_oracle = RateOracle.get_instance()
-
-        self.assertEqual(0, len(rate_oracle.prices))
-
-        rate_oracle._prices = {"BTC-USD": Decimal("20000")}
-
-        config_map.global_token.global_token_name = "EUR"
-
-        self.assertEqual(0, len(rate_oracle.prices))
+    async def _test_get_binance_prices(self):
+        com_prices = await RateOracle.get_binance_prices_by_domain(RateOracle.binance_price_url)
+        print(com_prices)
+        self.assertGreater(len(com_prices), 1)
+        us_prices = await RateOracle.get_binance_prices_by_domain(RateOracle.binance_us_price_url, "USD")
+        print(us_prices)
+        self.assertGreater(len(us_prices), 1)
+        quotes = {p.split("-")[1] for p in us_prices}
+        self.assertEqual(len(quotes), 1)
+        self.assertEqual(list(quotes)[0], "USD")
+        combined_prices = await RateOracle.get_binance_prices()
+        self.assertGreater(len(combined_prices), 1)
+        self.assertGreater(len(combined_prices), len(com_prices))

@@ -1,11 +1,12 @@
-import asyncio
-import logging
-from typing import Dict, Optional
-
 import aiohttp
+import logging
+import asyncio
+from typing import (
+    Optional,
+    Dict,
+)
 
-from hummingbot.core.network_base import NetworkBase
-from hummingbot.core.network_iterator import NetworkStatus
+from hummingbot.core.network_base import NetworkBase, NetworkStatus
 from hummingbot.logger import HummingbotLogger
 
 
@@ -34,10 +35,6 @@ class DataFeedBase(NetworkBase):
     @property
     def health_check_endpoint(self) -> str:
         raise NotImplementedError
-
-    @property
-    def ready(self) -> bool:
-        return self._ready_event.is_set()
 
     def get_price(self, asset: str) -> float:
         raise NotImplementedError

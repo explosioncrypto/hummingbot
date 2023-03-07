@@ -1,29 +1,42 @@
-import math
-import time
+#!/usr/bin/env python
 import unittest
+import math
+import pandas as pd
+import time
+
 from decimal import Decimal
 from typing import List
 
-import pandas as pd
+from hummingsim.backtest.backtest_market import BacktestMarket
+from hummingsim.backtest.market import (
+    Market,
+    QuantizationParams
+)
+from hummingsim.backtest.market_config import (
+    MarketConfig,
+    AssetType,
+)
+from hummingsim.backtest.mock_order_book_loader import MockOrderBookLoader
 
-from hummingbot.client.config.client_config_map import ClientConfigMap
-from hummingbot.client.config.config_helpers import ClientConfigAdapter
-from hummingbot.connector.exchange.paper_trade.paper_trade_exchange import QuantizationParams
-from hummingbot.connector.test_support.mock_paper_exchange import MockPaperExchange
-from hummingbot.core.clock import Clock, ClockMode
-from hummingbot.core.data_type.common import OrderType, PriceType, TradeType
+from hummingbot.core.clock import (
+    Clock,
+    ClockMode,
+)
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.order_book import OrderBook
-from hummingbot.core.data_type.order_book_row import OrderBookRow
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee
 from hummingbot.core.event.events import (
     BuyOrderCompletedEvent,
     MarketEvent,
     OrderBookTradeEvent,
     OrderFilledEvent,
+    OrderType,
+    PriceType,
     SellOrderCompletedEvent,
+    TradeFee,
+    TradeType,
 )
 from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
+from hummingbot.core.data_type.order_book_row import OrderBookRow
 
 s_decimal_0 = Decimal(0)
 
@@ -43,15 +56,18 @@ class MarketTradingPairTupleUnitTest(unittest.TestCase):
 
     def setUp(self):
         self.clock: Clock = Clock(ClockMode.BACKTEST, self.clock_tick_size, self.start_timestamp, self.end_timestamp)
-        self.market: MockPaperExchange = MockPaperExchange(
-            client_config_map=ClientConfigAdapter(ClientConfigMap())
+        self.market: BacktestMarket = BacktestMarket()
+        self.maker_data: MockOrderBookLoader = MockOrderBookLoader(
+            trading_pair=self.trading_pair,
+            base_currency=self.base_asset,
+            quote_currency=self.quote_asset,
         )
-        self.market.set_balanced_order_book(trading_pair=self.trading_pair,
-                                            mid_price=100,
-                                            min_price=50,
-                                            max_price=150,
-                                            price_step_size=1,
-                                            volume_step_size=10)
+        self.maker_data.set_balanced_order_book(mid_price=100,
+                                                min_price=50,
+                                                max_price=150,
+                                                price_step_size=1,
+                                                volume_step_size=10)
+        self.market.add_data(self.maker_data)
         self.market.set_balance("COINALPHA", self.base_balance)
         self.market.set_balance("HBOT", self.quote_balance)
         self.market.set_quantization_param(
@@ -63,11 +79,12 @@ class MarketTradingPairTupleUnitTest(unittest.TestCase):
         self.market_info = MarketTradingPairTuple(self.market, self.trading_pair, self.base_asset, self.quote_asset)
 
     @staticmethod
-    def simulate_limit_order_fill(market: MockPaperExchange, limit_order: LimitOrder, timestamp: float = 0):
+    def simulate_limit_order_fill(market: Market, limit_order: LimitOrder, timestamp: float = 0):
         quote_currency_traded: Decimal = limit_order.price * limit_order.quantity
         base_currency_traded: Decimal = limit_order.quantity
         quote_currency: str = limit_order.quote_currency
         base_currency: str = limit_order.base_currency
+        config: MarketConfig = market.config
 
         trade_event: OrderBookTradeEvent = OrderBookTradeEvent(
             trading_pair=limit_order.trading_pair,
@@ -90,15 +107,17 @@ class MarketTradingPairTupleUnitTest(unittest.TestCase):
                 OrderType.LIMIT,
                 limit_order.price,
                 limit_order.quantity,
-                AddedToCostTradeFee(Decimal(0.0))
+                TradeFee(Decimal(0.0))
             ))
             market.trigger_event(MarketEvent.BuyOrderCompleted, BuyOrderCompletedEvent(
                 market.current_timestamp,
                 limit_order.client_order_id,
                 base_currency,
                 quote_currency,
+                base_currency if config.buy_fees_asset is AssetType.BASE_CURRENCY else quote_currency,
                 base_currency_traded,
                 quote_currency_traded,
+                Decimal(0.0),
                 OrderType.LIMIT
             ))
         else:
@@ -112,15 +131,17 @@ class MarketTradingPairTupleUnitTest(unittest.TestCase):
                 OrderType.LIMIT,
                 limit_order.price,
                 limit_order.quantity,
-                AddedToCostTradeFee(Decimal(0.0))
+                TradeFee(Decimal(0.0))
             ))
             market.trigger_event(MarketEvent.SellOrderCompleted, SellOrderCompletedEvent(
                 market.current_timestamp,
                 limit_order.client_order_id,
                 base_currency,
                 quote_currency,
+                base_currency if config.sell_fees_asset is AssetType.BASE_CURRENCY else quote_currency,
                 base_currency_traded,
                 quote_currency_traded,
+                Decimal(0.0),
                 OrderType.LIMIT
             ))
 

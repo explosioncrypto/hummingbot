@@ -1,97 +1,112 @@
 ![Hummingbot](https://i.ibb.co/X5zNkKw/blacklogo-with-text.png)
 
 ----
-[![License](https://img.shields.io/badge/License-Apache%202.0-informational.svg)](https://github.com/hummingbot/hummingbot/blob/master/LICENSE)
-[![Twitter](https://img.shields.io/twitter/url?url=https://twitter.com/_hummingbot?style=social&label=_hummingbot)](https://twitter.com/_hummingbot)
-[![Youtube](https://img.shields.io/youtube/channel/subscribers/UCxzzdEnDRbylLMWmaMjywOA)](https://www.youtube.com/@hummingbot)
-[![Discord](https://img.shields.io/discord/530578568154054663?logo=discord&logoColor=white&style=flat-square)](https://discord.gg/hummingbot/)
+[![Discord](https://img.shields.io/discord/530578568154054663.svg?color=768AD4&label=discord&logo=https%3A%2F%2Fdiscordapp.com%2Fassets%2F8c9701b98ad4372b58f13fd9f65f966e.svg)](https://discord.hummingbot.io/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-informational.svg)](https://github.com/CoinAlpha/hummingbot/blob/master/LICENSE)
+[![Twitter Follow](https://img.shields.io/twitter/follow/hummingbot_io.svg?style=social&label=hummingbot)](https://twitter.com/hummingbot_io)
 
-Hummingbot is an open source  framework that helps you build automated trading strategies, or **bots** that run on cryptocurrency exchanges.
+Hummingbot is an open-source project that integrates cryptocurrency trading on both **centralized exchanges** and **decentralized protocols**. It allows users to run a client that executes customized, automated trading strategies for cryptocurrencies.
 
-This code is free and publicly available under the Apache 2.0 open source license!
+We created hummingbot to promote **decentralized market-making**: enabling members of the community to contribute to the liquidity and trading efficiency in cryptocurrency markets.
 
-## Why Hummingbot?
+## Connector status
 
-* **Both CEX and DEX connectors**: Hummingbot supports connectors to centralized exchanges like Binance and KuCoin, as well as decentralized exchanges like Uniswap and PancakeSwap on various blockchains (Ethereum, BNB Chain, etc).
-* **Community-contributed strategies**: The Hummingbot community has added many customizable templates for market making, arbitrage, and other algo trading strategies.
-* **Secure local client**: Hummingbot is a local client software that you install and run on your own devices or cloud virtual machines. It encrypts your API keys and private keys and never exposes them to any third parties.
-* **Community modules and events**: Hummingbot is driven by a global community of quant traders and developers. Check out community-maintained modules like Orchestration, join our bi-weekly developer calls, and learn how to build custom strategies using Hummingbot by taking Botcamp!
+![GREEN](https://via.placeholder.com/15/008000/?text=+) GREEN - Connector is working properly and safe to use
 
-Help us **democratize high-frequency trading** and make powerful trading algorithms accessible to everyone in the world!
+![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) YELLOW - Connector is either new or has one or more issues
+
+![RED](https://via.placeholder.com/15/f03c15/?text=+) RED - Connector is broken and unusable
 
 
-## Quick Links
+| logo | id | name | ver | doc | status |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| <img src="assets/ascend_ex_logo.png" alt="AscendEx" width="90" /> | ascend_ex | [AscendEx](https://ascendex.com/en/global-digital-asset-platform) | 1 | [API](https://ascendex.github.io/ascendex-pro-api/#ascendex-pro-api-documentation) |![GREEN](https://via.placeholder.com/15/008000/?text=+)  |
+| <img src="assets/beaxy_logo.png" alt="Beaxy" width="90" /> | beaxy | [Beaxy](https://beaxy.com/) | 2 | [API](https://beaxyapiv2trading.docs.apiary.io/) |![GREEN](https://via.placeholder.com/15/008000/?text=+)|
+| <img src="https://i.ibb.co/m0YDQLd/Screen-Shot-2019-03-14-at-10-53-42-AM.png" alt="Binance" width="90" /> | binance | [Binance](https://www.binance.com/) | 3 | [API](https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md) |![GREEN](https://via.placeholder.com/15/008000/?text=+) | 
+| <img src="assets/binanceus_logo.png" alt="Binance US" width="90" /> | binance_us | [Binance US](https://www.binance.com/) | 3 | [API](https://github.com/binance-us/binance-official-api-docs/blob/master/rest-api.md) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/binance_perpetual_logo.png" alt="Binance Perpetual" width="90" /> | binance_perpetual | [Binance Futures](https://www.binance.com/) | 1 | [API](https://binance-docs.github.io/apidocs/futures/en/) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+|<img src="assets/bittrex_logo.png" alt="Bittrex Global" width="90" height="30" />| bittrex | [Bittrex Global](https://global.bittrex.com/) | 3 | [API](https://bittrex.github.io/api/v3) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/bitfinex_logo.png" alt="Bitfinex" width="90" /> | bitfinex | [Bitfinex](https://www.bitfinex.com/) | 2 | [API](https://docs.bitfinex.com/docs/introduction) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+)  |
+| <img src="assets/blocktane_logo.png" alt="Blocktane" width="90" /> | blocktane | [Blocktane](https://blocktane.io/) | 2 | [API](https://blocktane.io/api) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+)  |
+| <img src="https://i.ibb.co/h9JdGDW/cbp.jpg" alt="Coinbase Pro" width="90" /> | coinbase_pro | [Coinbase Pro](https://pro.coinbase.com/) | * | [API](https://docs.pro.coinbase.com/) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/coinzoom_logo.svg" alt="CoinZoom" width="90" /> | coinzoom | [CoinZoom](https://trade.coinzoom.com/landing) | * | [API](https://api-docs.coinzoom.com/) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/cryptocom_logo.png" alt="Crypto.com" width="90" /> | crypto_com | [Crypto.com](https://crypto.com/exchange) | 2 | [API](https://exchange-docs.crypto.com/#introduction) |![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/digifinex_logo.svg" alt="Digifinex" width="90" /> | digifinex | [Digifinex](https://www.digifinex.com/en-ww) | 3 | [API](https://docs.digifinex.com/en-ww/v3/#introduction) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/dydx_logo.png" alt="dYdX" width="90" /> | dydx | [dYdX](https://dydx.exchange/) | 1 | [API](https://legacy-docs.dydx.exchange/#introduction) |![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/dydx_logo.png" alt="dYdX Perpetual" width="90" /> | dydx_perpetual | [dYdX Perpetual](https://dydx.exchange/) | 3 | [API](https://docs.dydx.exchange/#general) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/ftx_logo.png" alt="FTX" width="90" /> | ftx | [FTX](https://ftx.com/en) | 1 | [API](https://docs.ftx.com/#overview) |![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/himalaya_logo.png" alt="Himalaya Exchange" width="90" /> | himalaya | [Himalaya Exchange](https://himalaya.exchange/) | * | [API]() |![RED](https://via.placeholder.com/15/f03c15/?text=+) |
+| <img src="assets/hitbtc_logo.png" alt="HitBTC" width="90" /> | hitbtc | [HitBTC](https://hitbtc.com/) | 2 | [API](https://api.hitbtc.com/) | ![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+|<img src="assets/huobi_logo.png" alt="Huobi Global" width="90" />| huobi | [Huobi Global](https://www.hbg.com) | 1 | [API](https://huobiapi.github.io/docs/spot/v1/en/) |![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/kucoin_logo.png" alt="KuCoin" width="90" /> | kucoin | [KuCoin](https://www.kucoin.com/) | 1 | [API](https://docs.kucoin.com/#general) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/kraken_logo.png" alt="Kraken" width="90" /> | kraken | [Kraken](https://www.kraken.com/) | 1 | [API](https://www.kraken.com/features/api) |![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/liquid_logo.png" alt="Liquid" width="90" /> | liquid | [Liquid](https://www.liquid.com/) | 2 | [API](https://developers.liquid.com/) |![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/okex_logo.png" alt="OKEx" width="90" /> | okex | [OKEx](https://www.okex.com/) | 3 | [API](https://www.okex.com/docs/en/) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/probit_global_logo.png" alt="Probit Global" width="90" /> | probit | [Probit Global](https://www.probit.com/en-us/) | 1 | [API](https://docs-en.probit.com/docs) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/probit_korea_logo.png" alt="Probit Korea" width="90" /> | probit_kr | [Probit Korea](https://www.probit.kr/en-us/) | 1 | [API](https://docs-en.probit.com/docs) |![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
 
-* [Docs](https://docs.hummingbot.org): Check out the official Hummingbot documentation
-* [Installation](https://hummingbot.org/installation/): Install Hummingbot on various platforms
-* [FAQs](https://hummingbot.org/faq/): Answers to all your burning questions
-* [Botcamp](https://hummingbot.org/botcamp/): Learn how build your own custom HFT strategy in Hummingbot with our hands-on bootcamp!
-* [HBOT](https://hummingbot.org/hbot/): Learn how you can decide how this codebase evolves by voting with HBOT tokens 
 
-## Community
 
-* [Newsletter](https://hummingbot.substack.com): Get our monthly newletter whenever we ship a new release
-* [Discord](https://discord.gg/hummingbot): The main gathering spot for the global Hummingbot community
-* [YouTube](https://www.youtube.com/c/hummingbot): Videos that teach you how to get the most of of Hummingbot
-* [Twitter](https://twitter.com/_hummingbot): Get the latest announcements about Hummingbot
-* [Snapshot](https://twitter.com/_hummingbot): Participate in monthly polls that decide which components should be prioritized and included
 
-## Exchange Connectors
+## Supported decentralized exchanges
 
-Hummingbot connectors standardize trading logic and order types across different exchange types. Currently, we support the following exchange types:
+| logo | id | name | ver | doc| maintainer | status |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| <img src="https://i.ibb.co/1sPt940/Screen-Shot-2019-06-06-at-17-50-04.png" alt="Bamboo Relay" width="90" /> | bamboo_relay | [Bamboo Relay](https://bamboorelay.com/) | 3 | [API](https://sra.bamboorelay.com/) | [dex@bamboorelay.com](mailto:dex@bamboorelay.com) | ![RED](https://via.placeholder.com/15/f03c15/?text=+) |
+|<img src="assets/dolomite_logo.png" alt="Dolomite" width="90" />| dolomite | [Dolomite](https://dolomite.io/) | 1 | [API](https://docs.dolomite.io/) | [corey@dolomite.io](mailto:corey@dolomite.io) | ![RED](https://via.placeholder.com/15/f03c15/?text=+) |
+| <img src="assets/radar_logo.png" alt="Radar Relay" width="90" height="30" /> | radar_relay | [Radar Relay](https://radarrelay.com/) | 2 | [API](https://developers.radarrelay.com/api/trade-api) | | ![unavailable](https://via.placeholder.com/15/f03c15/?text=+) |
+| <img src="assets/loopring_logo.png" alt="Loopring" width="90" /> | loopring | [Loopring](https://loopring.io/) | 3 | [API](https://docs3.loopring.io/en/) | | ![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
 
- * **SPOT**: Connectors to central limit order book (CLOB) exchanges that trade spot markets
- * **PERP**: Connectors to central limit order book (CLOB) exchanges that trade perpetual swap markets
- * **AMM**: Connectors to decentralized exchanges that use the Automatic Market Maker (AMM) methodology
 
-Exchanges may be centralized (**CEX**), or decentralized (**DEX**), in which case user assets are stored on the blockchain and trading is performed via wallet addresses.
+## Supported protocol exchanges
+| logo | id | name | ver | doc| status |
+|:---:|:---:|:---:|:---:|:---:|:--:|
+| <img src="assets/celo_logo.svg" alt="Celo" width="90" /> | celo | [Celo](https://terra.money/) | * | [SDK](https://celo.org/developers) | ![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/balancer_logo.svg" alt="Balancer" width="90" height="30" /> | balancer | [Balancer](https://balancer.finance/) | * | [SDK](https://docs.balancer.finance/) | ![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/perpetual_finance_logo.png" alt="Perpetual Protocol" width="90" /> | perpetual_finance | [Perpetual Protocol](https://perp.fi/) | * | [SDK](https://docs.perp.fi/) | ![YELLOW](https://via.placeholder.com/15/ffff00/?text=+) |
+| <img src="assets/terra_logo.png" alt="Terra" width="90" /> | terra | [Terra](https://terra.money/) | * | [SDK](https://docs.terra.money/) | ![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/uniswap_logo.svg" alt="Uniswap" width="90" height="30" /> | uniswap | [Uniswap](https://uniswap.org/) | 2 | [SDK](https://uniswap.org/docs/v2/) | ![GREEN](https://via.placeholder.com/15/008000/?text=+) |
+| <img src="assets/uniswapv3_logo.png" alt="Uniswap v3" width="90" height="48" /> | uniswap v3 | [Uniswap v3](https://uniswap.org/) | 2 | [SDK](https://uniswap.org/blog/uniswap-v3/) | ![GREEN](https://via.placeholder.com/15/008000/?text=+) |
 
-| Tier | Exchange | Type | Signup code |
-|------|----------|------|-------------|
-| ![](https://img.shields.io/static/v1?label=Hummingbot&message=GOLD&color=yellow) | [Binance](https://www.binance.com/en/register?ref=FQQNNGCD) | SPOT CEX | [FQQNNGCD](https://www.binance.com/en/register?ref=FQQNNGCD)
-| ![](https://img.shields.io/static/v1?label=Hummingbot&message=GOLD&color=yellow) | [Binance Futures](https://www.binance.com/en/futures/ref?code=hummingbot) | PERP CEX | [hummingbot](https://www.binance.com/en/futures/ref?code=hummingbot)
-| ![](https://img.shields.io/static/v1?label=Hummingbot&message=GOLD&color=yellow) | [Uniswap](https://uniswap.org/) | AMM DEX |
-| ![](https://img.shields.io/static/v1?label=Hummingbot&message=SILVER&color=silver) | [KuCoin](https://www.kucoin.com/ucenter/signup?rcode=272KvRf) | SPOT CEX | [272KvRf](https://www.kucoin.com/ucenter/signup?rcode=272KvRf)
-| ![](https://img.shields.io/static/v1?label=Hummingbot&message=SILVER&color=silver) | [Gate.io](https://www.gate.io/signup/5868285) | SPOT CEX | [5868285](https://www.gate.io/signup/5868285)
-| ![](https://img.shields.io/static/v1?label=Hummingbot&message=SILVER&color=silver) | [AscendEx](https://ascendex.com/register?inviteCode=UEIXNXKW) | SPOT CEX | [UEIXNXKW](https://ascendex.com/register?inviteCode=UEIXNXKW)
-| ![](https://img.shields.io/static/v1?label=Hummingbot&message=SILVER&color=silver) | [PancakeSwap](https://pancakeswap.finance/) | AMM DEX |
-| ![](https://img.shields.io/static/v1?label=Hummingbot&message=SILVER&color=silver) | [Sushiswap](https://sushi.com/) | AMM DEX |
-| ![](https://img.shields.io/static/v1?label=Hummingbot&message=SILVER&color=silver) | [dYdX](https://dydx.exchange/) | PERP DEX |
 
-Quarterly [Polls](https://hummingbot.org/maintenance/certification/) allow the Hummingbot community to vote using HBOT tokens to decide which exchanges should be certified GOLD or SILVER, which means that they are maintained and continually improved by Hummingbot Foundation. In addition, the codebase includes BRONZE exchange connectors that are maintained by community members. See the [Hummingbot documentation](https://docs.hummingbot.org/exchanges) for all exchanges supported.
 
-## Strategies and Scripts
+## Getting Started
 
-We provide customizable strategy templates for core trading strategies that users can configure, extend, and run. Hummingbot Foundation maintains three **CORE** strategies:
+### Learn more about Hummingbot
 
-* [Pure Market Making](https://docs.hummingbot.org/strategies/pure-market-making/): Our original single-pair market making strategy
-* [Cross Exchange Market Making](https://docs.hummingbot.org/strategies/cross-exchange-market-making/): Provide liquidity while hedging filled orders on another exchange
-* [AMM Arbitrage](https://docs.hummingbot.org/strategies/amm-arbitrage/): Exploits price differences between AMM and SPOT exchanges
+- [Website](https://hummingbot.io)
+- [Documentation](https://docs.hummingbot.io)
+- [FAQs](https://hummingbot.zendesk.com/hc/en-us/categories/900001272063-Hummingbot-FAQs)
 
-**CORE** strategies are selected via HBOT voting through quarterly [Polls](https://hummingbot.org/maintenance/certification/). In addition, the codebase includes **COMMUNITY** strategies that are maintained by individuals or firms in the community. See the [Hummingbot documentation](https://docs.hummingbot.org/strategies) for all strategies supported.
+### Install Hummingbot
 
-### Scripts
+- [Quickstart guide](https://hummingbot.io/academy/quickstart/)
+- [All installation options](https://docs.hummingbot.io/installation/overview/)
+- [Installation scripts](./installation/)
 
-Scripts are a newer, lighter way to build Hummingbot strategies in Python, which let you modify the script's code and re-run it to apply the changes without exiting the Hummingbot interface or re-compiling the code.
+### Get support
+- Chat with our support team on [Discord](https://discord.hummingbot.io)
+- Email us at support@hummingbot.io
 
-See the [Scripts](https://docs.hummingbot.org/scripts/) section in the documentation for more info, or check out the [/scripts](https://github.com/hummingbot/hummingbot/tree/master/scripts) folder for all Script examples included in the codebase.
-
-## Other Hummingbot Repos
-
-* [Hummingbot Site](https://github.com/hummingbot/hummingbot-site): Official documentation for Hummingbot - we welcome contributions here too!
-* [Hummingbot Project Management](https://github.com/hummingbot/pm): Agendas and recordings of regular Hummingbot developer and community calls
-* [Awesome Hummingbot](https://github.com/hummingbot/awesome-hummingbot): All the Hummingbot links
-* [Hummingbot StreamLit Apps](https://github.com/hummingbot/streamlit-apps): Hummingbot-related StreamLit data apps and dashboards
-* [Community Tools](https://github.com/hummingbot/community-tools): Community contributed resources related to Hummingbot
-* [Brokers](https://github.com/hummingbot/brokers): Different brokers that can be used to communicate with multiple instances of Hummingbot
+### Chat with other traders
+- Join our community on [Discord](https://discord.coinalpha.com) or [Reddit](https://www.reddit.com/r/Hummingbot/)
+- Follow Hummingbot on [Twitter](https://twitter.com/hummingbot_io)
 
 ## Contributions
 
-Hummingbot belongs to its community, so we welcome contributions! Please review these [guidelines](./CONTRIBUTING.md) first.
+We welcome contributions from the community:
+- **Code and documentation contributions** via [pull requests](https://github.com/CoinAlpha/hummingbot/pulls)
+- **Bug reports and feature requests** through [Github issues](https://github.com/CoinAlpha/hummingbot/issues)
+- When contributing, please review the [contributing guidelines](CONTRIBUTING.md)
 
-To have your pull request merged into the codebase, submit a [Pull Request Proposal](https://snapshot.org/#/hbot-prp.eth) on our Snapshot. Note that you will need 1 HBOT in your Ethereum wallet to submit a Pull Request Proposal. See [HBOT](https://hummingbot.org/hbot) for more information.
+## About us
+
+Hummingbot was created and is maintained by CoinAlpha, Inc. We are [a global team of engineers and traders](https://hummingbot.io/about/).
+
+- **General**: contact us at [dev@hummingbot.io](mailto:dev@hummingbot.io) or join our [Discord server](https://discord.hummingbot.io).
+- **Business inquiries**: contact us at [partnerships@hummingbot.io](mailto:partnerships@hummingbot.io).
 
 ## Legal
 
-* **License**: Hummingbot is licensed under [Apache 2.0](./LICENSE).
-* **Data collection**: read important information regarding [Hummingbot Data Collection](./DATA_COLLECTION.md).
+- **License**: Hummingbot is licensed under [Apache 2.0](./LICENSE).
+- **Data collection**: read important information regarding [Hummingbot Data Collection](DATA_COLLECTION.md).

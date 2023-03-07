@@ -1,37 +1,41 @@
+from os.path import join, realpath
+import sys; sys.path.insert(0, realpath(join(__file__, "../../../../../")))
+
 import asyncio
+import conf
 import contextlib
 import logging
 import math
 import os
-import time
 import unittest
+import time
+
 from decimal import Decimal
-from os.path import join, realpath
 from typing import List
 
-import conf
-from hummingbot.connector.exchange.k2.k2_exchange import K2Exchange
-from hummingbot.connector.markets_recorder import MarketsRecorder
 from hummingbot.core.clock import Clock, ClockMode
-from hummingbot.core.data_type.common import OrderType
+from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
+from hummingbot.core.utils.async_utils import safe_gather, safe_ensure_future
 from hummingbot.core.event.event_logger import EventLogger
 from hummingbot.core.event.events import (
     BuyOrderCompletedEvent,
     BuyOrderCreatedEvent,
     MarketEvent,
-    OrderCancelledEvent,
     OrderFilledEvent,
+    OrderType,
     SellOrderCompletedEvent,
     SellOrderCreatedEvent,
+    OrderCancelledEvent
 )
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
-from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
+from hummingbot.model.sql_connection_manager import (
+    SQLConnectionManager,
+    SQLConnectionType
+)
 from hummingbot.model.market_state import MarketState
 from hummingbot.model.order import Order
-from hummingbot.model.sql_connection_manager import SQLConnectionManager, SQLConnectionType
 from hummingbot.model.trade_fill import TradeFill
-
-import sys; sys.path.insert(0, realpath(join(__file__, "../../../../../")))
+from hummingbot.connector.markets_recorder import MarketsRecorder
+from hummingbot.connector.exchange.k2.k2_exchange import K2Exchange
 
 
 logging.basicConfig(level=METRICS_LOG_LEVEL)
@@ -161,6 +165,7 @@ class K2ExchangeUnitTest(unittest.TestCase):
         self.assertEqual("USD", order_completed_event.quote_asset)
         self.assertAlmostEqual(base_amount_traded, order_completed_event.base_asset_amount)
         self.assertAlmostEqual(quote_amount_traded, order_completed_event.quote_asset_amount)
+        self.assertGreater(order_completed_event.fee_amount, Decimal(0))
         self.assertTrue(any([isinstance(event, BuyOrderCreatedEvent) and event.order_id == order_id
                              for event in self.event_logger.event_log]))
 

@@ -1,55 +1,55 @@
+import aiohttp
 import asyncio
-import copy
-import logging
-from decimal import Decimal
-from typing import Any, AsyncIterable, Dict, List, Optional, TYPE_CHECKING
-
 from async_timeout import timeout
-from libc.stdint cimport int64_t
-
-from hummingbot.connector.exchange.coinbase_pro import coinbase_pro_constants as CONSTANTS
-from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_api_order_book_data_source import \
-    CoinbaseProAPIOrderBookDataSource
-from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_auth import CoinbaseProAuth
-from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_in_flight_order cimport CoinbaseProInFlightOrder
-from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_in_flight_order import CoinbaseProInFlightOrder
-from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_order_book_tracker import CoinbaseProOrderBookTracker
-from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_user_stream_tracker import CoinbaseProUserStreamTracker
-from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_utils import (
-    build_coinbase_pro_web_assistant_factory,
-    CoinbaseProRESTRequest,
+from decimal import Decimal
+import json
+import logging
+import pandas as pd
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    AsyncIterable,
 )
-from hummingbot.connector.exchange_base import ExchangeBase
-from hummingbot.connector.trading_rule cimport TradingRule
+from libc.stdint cimport int64_t
+import copy
+
 from hummingbot.core.clock cimport Clock
 from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.order_book cimport OrderBook
-from hummingbot.core.data_type.order_book_message import OrderBookMessage
 from hummingbot.core.data_type.transaction_tracker import TransactionTracker
 from hummingbot.core.event.events import (
-    BuyOrderCompletedEvent,
-    BuyOrderCreatedEvent,
+    TradeType,
+    TradeFee,
     MarketEvent,
-    MarketOrderFailureEvent,
-    MarketTransactionFailureEvent,
-    OrderCancelledEvent,
-    OrderFilledEvent,
+    BuyOrderCompletedEvent,
     SellOrderCompletedEvent,
+    OrderFilledEvent,
+    OrderCancelledEvent,
+    BuyOrderCreatedEvent,
     SellOrderCreatedEvent,
+    MarketTransactionFailureEvent,
+    MarketOrderFailureEvent
 )
-from hummingbot.core.data_type.common import OrderType, TradeType
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee
 from hummingbot.core.network_iterator import NetworkStatus
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
-from hummingbot.core.utils.estimate_fee import estimate_fee
-from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod
-from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
+from hummingbot.core.utils.async_utils import (
+    safe_ensure_future,
+    safe_gather,
+)
 from hummingbot.logger import HummingbotLogger
-
-if TYPE_CHECKING:
-    from hummingbot.client.config.config_helpers import ClientConfigAdapter
+from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_auth import CoinbaseProAuth
+from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_order_book_tracker import CoinbaseProOrderBookTracker
+from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_user_stream_tracker import CoinbaseProUserStreamTracker
+from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_api_order_book_data_source import CoinbaseProAPIOrderBookDataSource
+from hummingbot.connector.exchange_base import ExchangeBase
+from hummingbot.core.event.events import OrderType
+from hummingbot.connector.trading_rule cimport TradingRule
+from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_in_flight_order import CoinbaseProInFlightOrder
+from hummingbot.connector.exchange.coinbase_pro.coinbase_pro_in_flight_order cimport CoinbaseProInFlightOrder
+from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
+from hummingbot.core.utils.estimate_fee import estimate_fee
 
 s_logger = None
 s_decimal_0 = Decimal("0.0")
@@ -71,7 +71,7 @@ cdef class CoinbaseProExchangeTransactionTracker(TransactionTracker):
 cdef class CoinbaseProExchange(ExchangeBase):
     MARKET_BUY_ORDER_COMPLETED_EVENT_TAG = MarketEvent.BuyOrderCompleted.value
     MARKET_SELL_ORDER_COMPLETED_EVENT_TAG = MarketEvent.SellOrderCompleted.value
-    MARKET_ORDER_CANCELED_EVENT_TAG = MarketEvent.OrderCancelled.value
+    MARKET_ORDER_CANCELLED_EVENT_TAG = MarketEvent.OrderCancelled.value
     MARKET_TRANSACTION_FAILURE_EVENT_TAG = MarketEvent.TransactionFailure.value
     MARKET_ORDER_FAILURE_EVENT_TAG = MarketEvent.OrderFailure.value
     MARKET_ORDER_FILLED_EVENT_TAG = MarketEvent.OrderFilled.value
@@ -84,6 +84,8 @@ cdef class CoinbaseProExchange(ExchangeBase):
     MAKER_FEE_PERCENTAGE_DEFAULT = 0.005
     TAKER_FEE_PERCENTAGE_DEFAULT = 0.005
 
+    COINBASE_API_ENDPOINT = "https://api.pro.coinbase.com"
+
     @classmethod
     def logger(cls) -> HummingbotLogger:
         global s_logger
@@ -92,22 +94,18 @@ cdef class CoinbaseProExchange(ExchangeBase):
         return s_logger
 
     def __init__(self,
-                 client_config_map: "ClientConfigAdapter",
                  coinbase_pro_api_key: str,
                  coinbase_pro_secret_key: str,
                  coinbase_pro_passphrase: str,
                  poll_interval: float = 5.0,    # interval which the class periodically pulls status from the rest API
                  trading_pairs: Optional[List[str]] = None,
                  trading_required: bool = True):
-        super().__init__(client_config_map)
+        super().__init__()
         self._trading_required = trading_required
-        auth = CoinbaseProAuth(coinbase_pro_api_key, coinbase_pro_secret_key, coinbase_pro_passphrase)
-        self._web_assistants_factory = build_coinbase_pro_web_assistant_factory(auth)
-        self._set_order_book_tracker(CoinbaseProOrderBookTracker(trading_pairs, self._web_assistants_factory))
-        self._user_stream_tracker = CoinbaseProUserStreamTracker(
-            trading_pairs=trading_pairs,
-            web_assistants_factory=self._web_assistants_factory,
-        )
+        self._coinbase_auth = CoinbaseProAuth(coinbase_pro_api_key, coinbase_pro_secret_key, coinbase_pro_passphrase)
+        self._order_book_tracker = CoinbaseProOrderBookTracker(trading_pairs=trading_pairs)
+        self._user_stream_tracker = CoinbaseProUserStreamTracker(coinbase_pro_auth=self._coinbase_auth,
+                                                                 trading_pairs=trading_pairs)
         self._ev_loop = asyncio.get_event_loop()
         self._poll_notifier = asyncio.Event()
         self._last_timestamp = 0
@@ -121,7 +119,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
         self._user_stream_tracker_task = None
         self._user_stream_event_listener_task = None
         self._trading_rules_polling_task = None
-        self._rest_assistant = None
+        self._shared_client = None
         self._maker_fee_percentage = Decimal(self.MAKER_FEE_PERCENTAGE_DEFAULT)
         self._taker_fee_percentage = Decimal(self.TAKER_FEE_PERCENTAGE_DEFAULT)
         self._real_time_balance_update = False
@@ -141,7 +139,15 @@ cdef class CoinbaseProExchange(ExchangeBase):
         Get mapping of all the order books that are being tracked.
         :return: Dict[trading_pair : OrderBook]
         """
-        return self.order_book_tracker.order_books
+        return self._order_book_tracker.order_books
+
+    @property
+    def coinbase_auth(self) -> CoinbaseProAuth:
+        """
+        :return: CoinbaseProAuth class (This is unique to coinbase pro market).
+        Read more here: https://docs.pro.coinbase.com/?python#signing-a-message
+        """
+        return self._coinbase_auth
 
     @property
     def status_dict(self) -> Dict[str, bool]:
@@ -151,7 +157,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
         This is used by `ready` method below to determine if a market is ready for trading.
         """
         return {
-            "order_books_initialized": self.order_book_tracker.ready,
+            "order_books_initialized": self._order_book_tracker.ready,
             "account_balance": len(self._account_balances) > 0 if self._trading_required else True,
             "trading_rule_initialized": len(self._trading_rules) > 0 if self._trading_required else True
         }
@@ -191,22 +197,6 @@ cdef class CoinbaseProExchange(ExchangeBase):
     def in_flight_orders(self) -> Dict[str, CoinbaseProInFlightOrder]:
         return self._in_flight_orders
 
-    @property
-    def user_stream_tracker(self) -> CoinbaseProUserStreamTracker:
-        return self._user_stream_tracker
-
-    @property
-    def maker_fee_percentage(self) -> Decimal:
-        return self._maker_fee_percentage
-
-    @property
-    def taker_fee_percentage(self) -> Decimal:
-        return self._taker_fee_percentage
-
-    @property
-    def trading_rules(self):
-        return self._trading_rules
-
     def restore_tracking_states(self, saved_states: Dict[str, any]):
         """
         *required
@@ -217,6 +207,14 @@ cdef class CoinbaseProExchange(ExchangeBase):
             key: CoinbaseProInFlightOrder.from_json(value)
             for key, value in saved_states.items()
         })
+
+    async def get_active_exchange_markets(self) -> pd.DataFrame:
+        """
+        *required
+        Used by the discovery strategy to read order books of all actively trading markets,
+        and find opportunities to profit
+        """
+        return await CoinbaseProAPIOrderBookDataSource.get_active_exchange_markets()
 
     cdef c_start(self, Clock clock, double timestamp):
         """
@@ -232,7 +230,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
         Async function used by NetworkBase class to handle when a single market goes online
         """
         self._stop_network()
-        self.order_book_tracker.start()
+        self._order_book_tracker.start()
         if self._trading_required:
             self._status_polling_task = safe_ensure_future(self._status_polling_loop())
             self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
@@ -243,7 +241,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
         """
         Synchronous function that handles when a single market goes offline
         """
-        self.order_book_tracker.stop()
+        self._order_book_tracker.stop()
         if self._status_polling_task is not None:
             self._status_polling_task.cancel()
         if self._user_stream_tracker_task is not None:
@@ -266,7 +264,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
         Async function used by NetworkBase class to check if the market is online / offline.
         """
         try:
-            await self._api_request(RESTMethod.GET, endpoint=CONSTANTS.TIME_PATH_URL)
+            await self._api_request("get", path_url="/time")
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -289,31 +287,36 @@ cdef class CoinbaseProExchange(ExchangeBase):
                 self._poll_notifier.set()
         self._last_timestamp = timestamp
 
-    async def _get_rest_assistant(self) -> RESTAssistant:
-        if self._rest_assistant is None:
-            self._rest_assistant = await self._web_assistants_factory.get_rest_assistant()
-        return self._rest_assistant
+    async def _http_client(self) -> aiohttp.ClientSession:
+        """
+        :returns: Shared client session instance
+        """
+        if self._shared_client is None:
+            self._shared_client = aiohttp.ClientSession()
+        return self._shared_client
 
-    async def _api_request(
-        self,
-        method: RESTMethod,
-        url: Optional[str] = None,
-        endpoint: Optional[str] = None,
-        data: Any = None,
-    ) -> Dict[str, Any]:
+    async def _api_request(self,
+                           http_method: str,
+                           path_url: str = None,
+                           url: str = None,
+                           data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         A wrapper for submitting API requests to Coinbase Pro
         :returns: json data from the endpoints
         """
-        client = await self._get_rest_assistant()
-        request = CoinbaseProRESTRequest(method, url, data=data, endpoint=endpoint, is_auth_required=True)
-        request.data = "" if request.data is None else request.data
-        response = await client.call(request, timeout=self.API_CALL_TIMEOUT)
-        resp_data = await response.json()
-        if response.status != 200:
-            raise IOError(f"Error fetching data from {response.url}. HTTP status is {response.status}. {resp_data}")
-        response_data = await response.json()
-        return response_data
+        assert path_url is not None or url is not None
+
+        url = f"{self.COINBASE_API_ENDPOINT}{path_url}" if url is None else url
+        data_str = "" if data is None else json.dumps(data)
+        headers = self.coinbase_auth.get_headers(http_method, path_url, data_str)
+
+        client = await self._http_client()
+        async with client.request(http_method,
+                                  url=url, timeout=self.API_CALL_TIMEOUT, data=data_str, headers=headers) as response:
+            data = await response.json()
+            if response.status != 200:
+                raise IOError(f"Error fetching data from {url}. HTTP status is {response.status}. {data}")
+            return data
 
     cdef object c_get_fee(self,
                           str base_currency,
@@ -321,8 +324,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
                           object order_type,
                           object order_side,
                           object amount,
-                          object price,
-                          object is_maker = None):
+                          object price):
         """
         *required
         function to calculate fees for a particular order
@@ -330,6 +332,16 @@ cdef class CoinbaseProExchange(ExchangeBase):
         """
         # There is no API for checking user's fee tier
         # Fee info from https://pro.coinbase.com/fees
+        """
+        cdef:
+            object maker_fee = self._maker_fee_percentage
+            object taker_fee = self._taker_fee_percentage
+        if order_type is OrderType.LIMIT and fee_overrides_config_map["coinbase_pro_maker_fee"].value is not None:
+            return TradeFee(percent=fee_overrides_config_map["coinbase_pro_maker_fee"].value / Decimal("100"))
+        if order_type is OrderType.MARKET and fee_overrides_config_map["coinbase_pro_taker_fee"].value is not None:
+            return TradeFee(percent=fee_overrides_config_map["coinbase_pro_taker_fee"].value / Decimal("100"))
+        return TradeFee(percent=maker_fee if order_type is OrderType.LIMIT else taker_fee)
+        """
         is_maker = order_type is OrderType.LIMIT_MAKER
         return estimate_fee("coinbase_pro", is_maker)
 
@@ -343,7 +355,8 @@ cdef class CoinbaseProExchange(ExchangeBase):
         if current_timestamp - self._last_fee_percentage_update_timestamp <= self.UPDATE_FEE_PERCENTAGE_INTERVAL:
             return
 
-        fee_info = await self._api_request(RESTMethod.GET, endpoint=CONSTANTS.FEES_PATH_URL)
+        path_url = "/fees"
+        fee_info = await self._api_request("get", path_url=path_url)
         self._maker_fee_percentage = Decimal(fee_info["maker_fee_rate"])
         self._taker_fee_percentage = Decimal(fee_info["taker_fee_rate"])
         self._last_fee_percentage_update_timestamp = current_timestamp
@@ -360,7 +373,8 @@ cdef class CoinbaseProExchange(ExchangeBase):
             set remote_asset_names = set()
             set asset_names_to_remove
 
-        account_balances = await self._api_request(RESTMethod.GET, endpoint=CONSTANTS.ACCOUNTS_PATH_URL)
+        path_url = "/accounts"
+        account_balances = await self._api_request("get", path_url=path_url)
 
         for balance_entry in account_balances:
             asset_name = balance_entry["currency"]
@@ -385,8 +399,8 @@ cdef class CoinbaseProExchange(ExchangeBase):
             # The poll interval for withdraw rules is 60 seconds.
             int64_t last_tick = <int64_t>(self._last_timestamp / 60.0)
             int64_t current_tick = <int64_t>(self._current_timestamp / 60.0)
-        if current_tick > last_tick or len(self._trading_rules) == 0:
-            product_info = await self._api_request(RESTMethod.GET, endpoint=CONSTANTS.PRODUCTS_PATH_URL)
+        if current_tick > last_tick or len(self._trading_rules) <= 0:
+            product_info = await self._api_request("get", path_url="/products")
             trading_rules_list = self._format_trading_rules(product_info)
             self._trading_rules.clear()
             for trading_rule in trading_rules_list:
@@ -403,9 +417,9 @@ cdef class CoinbaseProExchange(ExchangeBase):
             try:
                 trading_pair = rule.get("id")
                 retval.append(TradingRule(trading_pair,
-                                          min_price_increment=Decimal(str(rule.get("quote_increment"))),
-                                          min_base_amount_increment=Decimal(str(rule.get("base_increment"))),
-                                          min_notional_size=Decimal(str(rule.get("min_market_funds"))),
+                                          min_price_increment=Decimal(rule.get("quote_increment")),
+                                          min_order_size=Decimal(rule.get("base_min_size")),
+                                          max_order_size=Decimal(rule.get("base_max_size")),
                                           supports_market_orders=(not rule.get("limit_only"))))
             except Exception:
                 self.logger().error(f"Error parsing the trading_pair rule {rule}. Skipping.", exc_info=True)
@@ -441,7 +455,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
                         )
                         self.c_stop_tracking_order(client_order_id)
                         self.c_trigger_event(
-                            self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                            self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                             OrderCancelledEvent(self._current_timestamp, client_order_id)
                         )
                 except asyncio.CancelledError:
@@ -484,7 +498,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
                     ),
                     # Coinbase Pro's websocket stream tags events with order_id rather than trade_id
                     # Using order_id here for easier data validation
-                    exchange_trade_id=str(int(self._time() * 1e6)),
+                    exchange_trade_id=exchange_order_id,
                 )
                 self.logger().info(f"Filled {execute_amount_diff} out of {tracked_order.amount} of the "
                                    f"{order_type_description} order {client_order_id}.")
@@ -505,8 +519,11 @@ cdef class CoinbaseProExchange(ExchangeBase):
                                                                     tracked_order.client_order_id,
                                                                     tracked_order.base_asset,
                                                                     tracked_order.quote_asset,
+                                                                    (tracked_order.fee_asset
+                                                                     or tracked_order.base_asset),
                                                                     tracked_order.executed_amount_base,
                                                                     tracked_order.executed_amount_quote,
+                                                                    tracked_order.fee_paid,
                                                                     order_type))
                     else:
                         self.logger().info(f"The market sell order {tracked_order.client_order_id} has completed "
@@ -516,13 +533,16 @@ cdef class CoinbaseProExchange(ExchangeBase):
                                                                      tracked_order.client_order_id,
                                                                      tracked_order.base_asset,
                                                                      tracked_order.quote_asset,
+                                                                     (tracked_order.fee_asset
+                                                                      or tracked_order.quote_asset),
                                                                      tracked_order.executed_amount_base,
                                                                      tracked_order.executed_amount_quote,
+                                                                     tracked_order.fee_paid,
                                                                      order_type))
                 else:
-                    self.logger().info(f"The market order {tracked_order.client_order_id} has failed/been canceled "
+                    self.logger().info(f"The market order {tracked_order.client_order_id} has failed/been cancelled "
                                        f"according to order status API.")
-                    self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                    self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                          OrderCancelledEvent(
                                              self._current_timestamp,
                                              tracked_order.client_order_id
@@ -530,7 +550,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
                 self.c_stop_tracking_order(tracked_order.client_order_id)
         self._last_order_update_timestamp = current_timestamp
 
-    async def _iter_user_event_queue(self) -> AsyncIterable[OrderBookMessage]:
+    async def _iter_user_event_queue(self) -> AsyncIterable[Dict[str, Any]]:
         """
         Iterator for incoming messages from the user stream.
         """
@@ -549,7 +569,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
         """
         async for event_message in self._iter_user_event_queue():
             try:
-                content = event_message
+                content = event_message.content
                 event_type = content.get("type")
                 exchange_order_ids = [content.get("order_id"),
                                       content.get("maker_order_id"),
@@ -570,27 +590,9 @@ cdef class CoinbaseProExchange(ExchangeBase):
                 execute_amount_diff = s_decimal_0
 
                 if event_type == "match":
-                    updated = tracked_order.update_with_trade_update(content)
-                    if updated:
-                        execute_amount_diff = Decimal(content.get("size", 0.0))
-                        self.logger().info(f"Filled {execute_amount_diff} out of {tracked_order.amount} of the "
-                                           f"{order_type_description} order {tracked_order.client_order_id}")
-                        exchange_order_id = tracked_order.exchange_order_id
-
-                        self.c_trigger_event(self.MARKET_ORDER_FILLED_EVENT_TAG,
-                                             OrderFilledEvent(
-                                                 self._current_timestamp,
-                                                 tracked_order.client_order_id,
-                                                 tracked_order.trading_pair,
-                                                 tracked_order.trade_type,
-                                                 tracked_order.order_type,
-                                                 execute_price,
-                                                 execute_amount_diff,
-                                                 AddedToCostTradeFee(
-                                                     percent=tracked_order.fee_rate_from_trade_update(content)
-                                                 ),
-                                                 exchange_trade_id=content["trade_id"]
-                                             ))
+                    execute_amount_diff = Decimal(content.get("size", 0.0))
+                    tracked_order.executed_amount_base += execute_amount_diff
+                    tracked_order.executed_amount_quote += execute_amount_diff * execute_price
 
                 if event_type == "change":
                     if content.get("new_size") is not None:
@@ -608,6 +610,31 @@ cdef class CoinbaseProExchange(ExchangeBase):
                     tracked_order.executed_amount_base = new_confirmed_amount
                     tracked_order.executed_amount_quote += execute_amount_diff * execute_price
 
+                if execute_amount_diff > s_decimal_0:
+                    self.logger().info(f"Filled {execute_amount_diff} out of {tracked_order.amount} of the "
+                                       f"{order_type_description} order {tracked_order.client_order_id}")
+                    exchange_order_id = tracked_order.exchange_order_id
+
+                    self.c_trigger_event(self.MARKET_ORDER_FILLED_EVENT_TAG,
+                                         OrderFilledEvent(
+                                             self._current_timestamp,
+                                             tracked_order.client_order_id,
+                                             tracked_order.trading_pair,
+                                             tracked_order.trade_type,
+                                             tracked_order.order_type,
+                                             execute_price,
+                                             execute_amount_diff,
+                                             self.c_get_fee(
+                                                 tracked_order.base_asset,
+                                                 tracked_order.quote_asset,
+                                                 tracked_order.order_type,
+                                                 tracked_order.trade_type,
+                                                 execute_price,
+                                                 execute_amount_diff,
+                                             ),
+                                             exchange_trade_id=exchange_order_id
+                                         ))
+
                 if content.get("reason") == "filled":  # Only handles orders with "done" status
                     if tracked_order.trade_type == TradeType.BUY:
                         self.logger().info(f"The market buy order {tracked_order.client_order_id} has completed "
@@ -617,8 +644,11 @@ cdef class CoinbaseProExchange(ExchangeBase):
                                                                     tracked_order.client_order_id,
                                                                     tracked_order.base_asset,
                                                                     tracked_order.quote_asset,
+                                                                    (tracked_order.fee_asset
+                                                                     or tracked_order.base_asset),
                                                                     tracked_order.executed_amount_base,
                                                                     tracked_order.executed_amount_quote,
+                                                                    tracked_order.fee_paid,
                                                                     tracked_order.order_type))
                     else:
                         self.logger().info(f"The market sell order {tracked_order.client_order_id} has completed "
@@ -628,16 +658,18 @@ cdef class CoinbaseProExchange(ExchangeBase):
                                                                      tracked_order.client_order_id,
                                                                      tracked_order.base_asset,
                                                                      tracked_order.quote_asset,
+                                                                     (tracked_order.fee_asset
+                                                                      or tracked_order.quote_asset),
                                                                      tracked_order.executed_amount_base,
                                                                      tracked_order.executed_amount_quote,
+                                                                     tracked_order.fee_paid,
                                                                      tracked_order.order_type))
-                    tracked_order.last_state = "filled"
                     self.c_stop_tracking_order(tracked_order.client_order_id)
 
                 elif content.get("reason") == "canceled":  # reason == "canceled":
                     execute_amount_diff = 0
                     tracked_order.last_state = "canceled"
-                    self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                    self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                          OrderCancelledEvent(self._current_timestamp, tracked_order.client_order_id))
                     execute_amount_diff = 0
                     self.c_stop_tracking_order(tracked_order.client_order_id)
@@ -657,6 +689,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
         Async wrapper for placing orders through the rest API.
         :returns: json response from the API
         """
+        path_url = "/orders"
         data = {
             "size": f"{amount:f}",
             "product_id": trading_pair,
@@ -668,7 +701,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
         elif order_type is OrderType.LIMIT_MAKER:
             data["price"] = f"{price:f}"
             data["post_only"] = True
-        order_result = await self._api_request(RESTMethod.POST, endpoint=CONSTANTS.ORDERS_PATH_URL, data=data)
+        order_result = await self._api_request("post", path_url=path_url, data=data)
         return order_result
 
     async def execute_buy(self,
@@ -706,8 +739,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
                                                       trading_pair,
                                                       decimal_amount,
                                                       decimal_price,
-                                                      order_id,
-                                                      tracked_order.creation_timestamp))
+                                                      order_id))
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -771,8 +803,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
                                                        trading_pair,
                                                        decimal_amount,
                                                        decimal_price,
-                                                       order_id,
-                                                       tracked_order.creation_timestamp))
+                                                       order_id))
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -810,20 +841,20 @@ cdef class CoinbaseProExchange(ExchangeBase):
         """
         try:
             exchange_order_id = await self._in_flight_orders.get(order_id).get_exchange_order_id()
-            endpoint = f"{CONSTANTS.ORDERS_PATH_URL}/{exchange_order_id}"
-            cancelled_id = await self._api_request(RESTMethod.DELETE, endpoint=endpoint)
+            path_url = f"/orders/{exchange_order_id}"
+            cancelled_id = await self._api_request("delete", path_url=path_url)
             if cancelled_id == exchange_order_id:
-                self.logger().info(f"Successfully canceled order {order_id}.")
+                self.logger().info(f"Successfully cancelled order {order_id}.")
                 self.c_stop_tracking_order(order_id)
-                self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                      OrderCancelledEvent(self._current_timestamp, order_id))
                 return order_id
         except IOError as e:
             if "order not found" in str(e):
                 # The order was never there to begin with. So cancelling it is a no-op but semantically successful.
-                self.logger().info(f"The order {order_id} does not exist on Coinbase Pro. No cancelation needed.")
+                self.logger().info(f"The order {order_id} does not exist on Coinbase Pro. No cancellation needed.")
                 self.c_stop_tracking_order(order_id)
-                self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                      OrderCancelledEvent(self._current_timestamp, order_id))
                 return order_id
         except asyncio.CancelledError:
@@ -871,7 +902,7 @@ cdef class CoinbaseProExchange(ExchangeBase):
                         )
         except Exception as e:
             self.logger().network(
-                f"Unexpected error canceling orders.",
+                f"Unexpected error cancelling orders.",
                 exc_info=True,
                 app_warning_msg="Failed to cancel order on Coinbase Pro. Check API key and network connection."
             )
@@ -932,8 +963,8 @@ cdef class CoinbaseProExchange(ExchangeBase):
         if order is None:
             return None
         exchange_order_id = await order.get_exchange_order_id()
-        endpoint = f"{CONSTANTS.ORDERS_PATH_URL}/{exchange_order_id}"
-        result = await self._api_request(RESTMethod.GET, endpoint=endpoint)
+        path_url = f"/orders/{exchange_order_id}"
+        result = await self._api_request("get", path_url=path_url)
         return result
 
     async def list_orders(self) -> List[Any]:
@@ -941,9 +972,29 @@ cdef class CoinbaseProExchange(ExchangeBase):
         Gets a list of the user's active orders via rest API
         :returns: json response
         """
-        endpoint = f"{CONSTANTS.ORDERS_PATH_URL}?status=all"
-        result = await self._api_request(RESTMethod.GET, endpoint=endpoint)
+        path_url = "/orders?status=all"
+        result = await self._api_request("get", path_url=path_url)
         return result
+
+    async def get_transfers(self) -> Dict[str, Any]:
+        """
+        Gets a list of the user's transfers via rest API
+        :returns: json response
+        """
+        path_url = "/transfers"
+        result = await self._api_request("get", path_url=path_url)
+        return result
+
+    async def list_coinbase_accounts(self) -> Dict[str, str]:
+        """
+        Gets a list of the user's coinbase accounts via rest API
+        :returns: json response
+        """
+        path_url = "/coinbase-accounts"
+        coinbase_accounts = await self._api_request("get", path_url=path_url)
+        ids = [a["id"] for a in coinbase_accounts]
+        currencies = [a["currency"] for a in coinbase_accounts]
+        return dict(zip(currencies, ids))
 
     cdef OrderBook c_get_order_book(self, str trading_pair):
         """
@@ -955,21 +1006,6 @@ cdef class CoinbaseProExchange(ExchangeBase):
         if trading_pair not in order_books:
             raise ValueError(f"No order book exists for '{trading_pair}'.")
         return order_books[trading_pair]
-
-    def start_tracking_order(self,
-                             order_id: str,
-                             trading_pair: str,
-                             order_type: OrderType,
-                             trade_type: TradeType,
-                             price: Decimal,
-                             amount: Decimal):
-        self.c_start_tracking_order(
-            order_id,
-            trading_pair,
-            order_type,
-            trade_type,
-            price,
-            amount)
 
     cdef c_start_tracking_order(self,
                                 str client_order_id,
@@ -989,7 +1025,6 @@ cdef class CoinbaseProExchange(ExchangeBase):
             trade_type,
             price,
             amount,
-            creation_timestamp=self.current_timestamp
         )
 
     cdef c_stop_tracking_order(self, str order_id):
@@ -1024,7 +1059,10 @@ cdef class CoinbaseProExchange(ExchangeBase):
         """
         cdef:
             TradingRule trading_rule = self._trading_rules[trading_pair]
-        return trading_rule.min_base_amount_increment
+
+        # Coinbase Pro is using the min_order_size as max_precision
+        # Order size must be a multiple of the min_order_size
+        return trading_rule.min_order_size
 
     cdef object c_quantize_order_amount(self, str trading_pair, object amount, object price=s_decimal_0):
         """
@@ -1068,17 +1106,8 @@ cdef class CoinbaseProExchange(ExchangeBase):
                 order_type: OrderType,
                 order_side: TradeType,
                 amount: Decimal,
-                price: Decimal = s_decimal_nan,
-                is_maker: Optional[bool] = None) -> AddedToCostTradeFee:
-        return self.c_get_fee(base_currency, quote_currency, order_type, order_side, amount, price, is_maker)
+                price: Decimal = s_decimal_nan) -> TradeFee:
+        return self.c_get_fee(base_currency, quote_currency, order_type, order_side, amount, price)
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
         return self.c_get_order_book(trading_pair)
-
-    async def all_trading_pairs(self) -> List[str]:
-        # This method should be removed and instead we should implement _initialize_trading_pair_symbol_map
-        return await CoinbaseProAPIOrderBookDataSource.fetch_trading_pairs()
-
-    async def get_last_traded_prices(self, trading_pairs: List[str]) -> Dict[str, float]:
-        # This method should be removed and instead we should implement _get_last_traded_price
-        return await CoinbaseProAPIOrderBookDataSource.get_last_traded_prices(trading_pairs=trading_pairs)

@@ -4,8 +4,6 @@ string and determines whether it is valid input. This file contains many validat
 hummingbot ConfigVars.
 """
 
-import time
-from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -14,29 +12,27 @@ def validate_exchange(value: str) -> Optional[str]:
     """
     Restrict valid exchanges to the exchange file names
     """
-    from hummingbot.client.settings import AllConnectorSettings
-    if value not in AllConnectorSettings.get_exchange_names():
-        return f"Invalid exchange, please choose value from {AllConnectorSettings.get_exchange_names()}"
+    from hummingbot.client.settings import EXCHANGES
+    if value not in EXCHANGES:
+        return f"Invalid exchange, please choose value from {EXCHANGES}"
 
 
 def validate_derivative(value: str) -> Optional[str]:
     """
     restrict valid derivatives to the derivative file names
     """
-    from hummingbot.client.settings import AllConnectorSettings
-    if value not in AllConnectorSettings.get_derivative_names():
-        return f"Invalid derivative, please choose value from {AllConnectorSettings.get_derivative_names()}"
+    from hummingbot.client.settings import DERIVATIVES
+    if value not in DERIVATIVES:
+        return f"Invalid derivative, please choose value from {DERIVATIVES}"
 
 
 def validate_connector(value: str) -> Optional[str]:
     """
     Restrict valid derivatives to the connector file names
     """
-    from hummingbot.client import settings
-    from hummingbot.client.settings import AllConnectorSettings
-    if (value not in AllConnectorSettings.get_connector_settings()
-            and value not in settings.PAPER_TRADE_EXCHANGES):
-        return f"Invalid connector, please choose value from {AllConnectorSettings.get_connector_settings().keys()}"
+    from hummingbot.client.settings import CONNECTOR_SETTINGS
+    if value not in CONNECTOR_SETTINGS:
+        return f"Invalid connector, please choose value from {CONNECTOR_SETTINGS.keys()}"
 
 
 def validate_strategy(value: str) -> Optional[str]:
@@ -122,43 +118,3 @@ def validate_int(value: str, min_value: int = None, max_value: int = None, inclu
             return f"Value must be more than {min_value}."
         elif max_value is not None and not int_value < max_value:
             return f"Value must be less than {max_value}."
-
-
-def validate_float(value: str, min_value: float = None, max_value: float = None, inclusive=True) -> Optional[str]:
-    """
-    Parse an float value from a string. This value can also be clamped.
-    """
-    try:
-        float_value = float(value)
-    except Exception:
-        return f"{value} is not in integer format."
-    if inclusive:
-        if min_value is not None and max_value is not None:
-            if not (min_value <= float_value <= max_value):
-                return f"Value must be between {min_value} and {max_value}."
-        elif min_value is not None and not float_value >= min_value:
-            return f"Value cannot be less than {min_value}."
-        elif max_value is not None and not float_value <= max_value:
-            return f"Value cannot be more than {max_value}."
-    else:
-        if min_value is not None and max_value is not None:
-            if not (min_value < float_value < max_value):
-                return f"Value must be between {min_value} and {max_value} (exclusive)."
-        elif min_value is not None and not float_value > min_value:
-            return f"Value must be more than {min_value}."
-        elif max_value is not None and not float_value < max_value:
-            return f"Value must be less than {max_value}."
-
-
-def validate_datetime_iso_string(value: str) -> Optional[str]:
-    try:
-        datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
-    except ValueError:
-        return "Incorrect date time format (expected is YYYY-MM-DD HH:MM:SS)"
-
-
-def validate_time_iso_string(value: str) -> Optional[str]:
-    try:
-        time.strptime(value, '%H:%M:%S')
-    except ValueError:
-        return "Incorrect time format (expected is HH:MM:SS)"

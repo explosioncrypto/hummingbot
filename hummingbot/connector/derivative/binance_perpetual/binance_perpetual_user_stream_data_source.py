@@ -1,145 +1,129 @@
 import asyncio
+import logging
 import time
-from typing import TYPE_CHECKING, List, Optional
+from typing import Optional, Dict, AsyncIterable
 
-import hummingbot.connector.derivative.binance_perpetual.binance_perpetual_constants as CONSTANTS
-import hummingbot.connector.derivative.binance_perpetual.binance_perpetual_web_utils as web_utils
-from hummingbot.connector.derivative.binance_perpetual.binance_perpetual_auth import BinancePerpetualAuth
+import aiohttp
+import ujson
+import websockets
+from websockets import ConnectionClosed
+
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.utils.async_utils import safe_ensure_future
-from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
-from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
 
-if TYPE_CHECKING:
-    from hummingbot.connector.derivative.binance_perpetual.binance_perpetual_derivative import (
-        BinancePerpetualDerivative,
-    )
+BINANCE_USER_STREAM_ENDPOINT = "/fapi/v1/listenKey"
 
 
 class BinancePerpetualUserStreamDataSource(UserStreamTrackerDataSource):
-    LISTEN_KEY_KEEP_ALIVE_INTERVAL = 1800  # Recommended to Ping/Update listen key to keep connection alive
-    HEARTBEAT_TIME_INTERVAL = 30.0
-    _logger: Optional[HummingbotLogger] = None
+    _bpusds_logger: Optional[HummingbotLogger] = None
 
-    def __init__(
-            self,
-            auth: BinancePerpetualAuth,
-            connector: 'BinancePerpetualDerivative',
-            api_factory: WebAssistantsFactory,
-            domain: str = CONSTANTS.DOMAIN,
-    ):
-
-        super().__init__()
-        self._domain = domain
-        self._api_factory = api_factory
-        self._auth = auth
-        self._ws_assistants: List[WSAssistant] = []
-        self._connector = connector
-        self._current_listen_key = None
-        self._listen_for_user_stream_task = None
-        self._last_listen_key_ping_ts = None
-
-        self._manage_listen_key_task = None
-        self._listen_key_initialized_event: asyncio.Event = asyncio.Event()
+    @classmethod
+    def logger(cls) -> HummingbotLogger:
+        if cls._bpusds_logger is None:
+            cls._bpusds_logger = logging.getLogger(__name__)
+        return cls._bpusds_logger
 
     @property
     def last_recv_time(self) -> float:
-        if self._ws_assistant:
-            return self._ws_assistant.last_recv_time
-        return 0
+        return self._last_recv_time
 
-    async def _get_ws_assistant(self) -> WSAssistant:
-        if self._ws_assistant is None:
-            self._ws_assistant = await self._api_factory.get_ws_assistant()
-        return self._ws_assistant
+    def __init__(self, base_url: str, stream_url: str, api_key: str):
+        super().__init__()
+        self._api_key: str = api_key
+        self._current_listen_key = None
+        self._listen_for_user_stream_task = None
+        self._last_recv_time: float = 0
+        self._http_stream_url = base_url + BINANCE_USER_STREAM_ENDPOINT
+        self._wss_stream_url = stream_url + "/ws/"
 
     async def get_listen_key(self):
-        data = None
+        async with aiohttp.ClientSession() as client:
+            async with client.post(self._http_stream_url,
+                                   headers={"X-MBX-APIKEY": self._api_key}) as response:
+                response: aiohttp.ClientResponse = response
+                if response.status != 200:
+                    raise IOError(f"Error fetching Binance Perpetual user stream listen key. "
+                                  f"HTTP status is {response.status}.")
+                data: Dict[str, str] = await response.json()
+                return data["listenKey"]
 
-        try:
-            data = await self._connector._api_post(
-                path_url=CONSTANTS.BINANCE_USER_STREAM_ENDPOINT,
-                is_auth_required=True)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exception:
-            raise IOError(
-                f"Error fetching Binance Perpetual user stream listen key. "
-                f"The response was {data}. Error: {exception}"
-            )
+    async def ping_listen_key(self, listen_key: str) -> bool:
+        async with aiohttp.ClientSession() as client:
+            async with client.put(self._http_stream_url,
+                                  headers={"X-MBX-APIKEY": self._api_key},
+                                  params={"listenKey": listen_key}) as response:
+                data: [str, any] = await response.json()
+                if "code" in data:
+                    self.logger().warning(f"Failed to refresh the listen key {listen_key}: {data}")
+                    return False
+                return True
 
-        return data["listenKey"]
-
-    async def ping_listen_key(self) -> bool:
-        try:
-            data = await self._connector._api_put(
-                path_url=CONSTANTS.BINANCE_USER_STREAM_ENDPOINT,
-                params={"listenKey": self._current_listen_key},
-                is_auth_required=True,
-                return_err=True)
-            if "code" in data:
-                self.logger().warning(f"Failed to refresh the listen key {self._current_listen_key}: {data}")
-                return False
-
-        except asyncio.CancelledError:
-            raise
-        except Exception as exception:
-            self.logger().warning(f"Failed to refresh the listen key {self._current_listen_key}: {exception}")
-            return False
-
-        return True
-
-    async def _manage_listen_key_task_loop(self):
+    async def ws_messages(self, client: websockets.WebSocketClientProtocol) -> AsyncIterable[str]:
         try:
             while True:
-                if self._current_listen_key is None:
-                    self._current_listen_key = await self.get_listen_key()
-                    self.logger().info(f"Successfully obtained listen key {self._current_listen_key}")
-                    self._listen_key_initialized_event.set()
-                else:
-                    success: bool = await self.ping_listen_key()
-                    if not success:
-                        self.logger().error("Error occurred renewing listen key... ")
-                        break
-                    else:
-                        self.logger().info(f"Refreshed listen key {self._current_listen_key}.")
-                        self._last_listen_key_ping_ts = int(time.time())
-                await self._sleep(self.LISTEN_KEY_KEEP_ALIVE_INTERVAL)
-
-        except Exception as e:
-            self.logger().error(f"Unexpected error occurred with maintaining listen key. "
-                                f"Error {e}")
-            raise
+                try:
+                    raw_msg: str = await asyncio.wait_for(client.recv(), timeout=50.0)
+                    self._last_recv_time = time.time()
+                    yield raw_msg
+                except asyncio.TimeoutError:
+                    try:
+                        self._last_recv_time = time.time()
+                        pong_waiter = await client.ping()
+                        await asyncio.wait_for(pong_waiter, timeout=50.0)
+                    except asyncio.TimeoutError:
+                        raise
+        except asyncio.TimeoutError:
+            self.logger().warning("Websocket ping timed out. Going to reconnect... ")
+            return
+        except ConnectionClosed:
+            return
         finally:
+            await client.close()
+
+    async def log_user_stream(self, output: asyncio.Queue):
+        while True:
+            try:
+                stream_url: str = f"{self._wss_stream_url}{self._current_listen_key}"
+                async with websockets.connect(stream_url) as ws:
+                    ws: websockets.WebSocketClientProtocol = ws
+                    async for raw_msg in self.ws_messages(ws):
+                        msg_json: Dict[str, any] = ujson.loads(raw_msg)
+                        output.put_nowait(msg_json)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger().error("Unexpected error. Retrying after 5 seconds... ", exc_info=True)
+                await asyncio.sleep(5)
+
+    async def listen_for_user_stream(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
+        try:
+            while True:
+                try:
+                    if self._current_listen_key is None:
+                        self._current_listen_key = await self.get_listen_key()
+                        self.logger().debug(f"Obtained listen key {self._current_listen_key}.")
+                        if self._listen_for_user_stream_task is not None:
+                            self._listen_for_user_stream_task.cancel()
+                        self._listen_for_user_stream_task = safe_ensure_future(self.log_user_stream(output))
+                        await self.wait_til_next_tick(seconds=3600)
+                    success: bool = await self.ping_listen_key(self._current_listen_key)
+                    if not success:
+                        self._current_listen_key = None
+                        if self._listen_for_user_stream_task is not None:
+                            self._listen_for_user_stream_task.cancel()
+                            self._listen_for_user_stream_task = None
+                        continue
+                    self.logger().debug(f"Refreshed listen key {self._current_listen_key}.")
+                    await self.wait_til_next_tick(seconds=60)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    self.logger().error("Unexpected error while maintaning the user event listen key. Retrying after "
+                                        "5 seconds...", exc_info=True)
+                    await asyncio.sleep(5)
+        finally:
+            if self._listen_for_user_stream_task is not None:
+                self._listen_for_user_stream_task.cancel()
+                self._listen_for_user_stream_task = None
             self._current_listen_key = None
-            self._listen_key_initialized_event.clear()
-
-    async def _connected_websocket_assistant(self) -> WSAssistant:
-        """
-        Creates an instance of WSAssistant connected to the exchange
-        """
-        self._manage_listen_key_task = safe_ensure_future(self._manage_listen_key_task_loop())
-        await self._listen_key_initialized_event.wait()
-
-        ws: WSAssistant = await self._get_ws_assistant()
-        url = f"{web_utils.wss_url(CONSTANTS.PRIVATE_WS_ENDPOINT, self._domain)}/{self._current_listen_key}"
-        await ws.connect(ws_url=url, ping_timeout=self.HEARTBEAT_TIME_INTERVAL)
-        return ws
-
-    async def _subscribe_channels(self, websocket_assistant: WSAssistant):
-        """
-        Subscribes to the trade events and diff orders events through the provided websocket connection.
-
-        Binance does not require any channel subscription.
-
-        :param websocket_assistant: the websocket assistant used to connect to the exchange
-        """
-        pass
-
-    async def _on_user_stream_interruption(self, websocket_assistant: Optional[WSAssistant]):
-        websocket_assistant and await websocket_assistant.disconnect()
-        self._manage_listen_key_task and self._manage_listen_key_task.cancel()
-        self._current_listen_key = None
-        self._listen_key_initialized_event.clear()
-        await self._sleep(5)

@@ -2,19 +2,19 @@
 import asyncio
 import logging
 import time
-from typing import Any, AsyncIterable, Dict, List, Optional
-
 import aiohttp
 import ujson
 import websockets
 
 import hummingbot.connector.exchange.k2.k2_constants as constants
-from hummingbot.connector.exchange.k2 import k2_utils
-from hummingbot.connector.exchange.k2.k2_order_book import K2OrderBook
+
+from typing import Optional, List, Dict, AsyncIterable, Any
 from hummingbot.core.data_type.order_book import OrderBook
 from hummingbot.core.data_type.order_book_message import OrderBookMessage
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 from hummingbot.logger import HummingbotLogger
+from hummingbot.connector.exchange.k2.k2_order_book import K2OrderBook
+from hummingbot.connector.exchange.k2 import k2_utils
 
 
 class K2APIOrderBookDataSource(OrderBookTrackerDataSource):
@@ -41,7 +41,7 @@ class K2APIOrderBookDataSource(OrderBookTrackerDataSource):
     async def get_last_traded_prices(cls, trading_pairs: List[str]) -> Dict[str, float]:
         result = {}
         async with aiohttp.ClientSession() as client:
-            async with client.get(f"{constants.REST_URL}{constants.GET_TRADING_PAIRS_STATS}", verify_ssl=False) as resp:
+            async with client.get(f"{constants.REST_URL}{constants.GET_TRADING_PAIRS_STATS}") as resp:
                 resp_json = await resp.json()
                 if resp_json["success"] is False:
                     raise IOError(
@@ -59,9 +59,7 @@ class K2APIOrderBookDataSource(OrderBookTrackerDataSource):
     @staticmethod
     async def fetch_trading_pairs() -> List[str]:
         async with aiohttp.ClientSession() as client:
-            async with client.get(f"{constants.REST_URL}{constants.GET_TRADING_PAIRS}",
-                                  timeout=10,
-                                  verify_ssl=False) as response:
+            async with client.get(f"{constants.REST_URL}{constants.GET_TRADING_PAIRS}", timeout=10) as response:
                 if response.status == 200:
                     try:
                         data: Dict[str, Any] = await response.json()
@@ -79,8 +77,7 @@ class K2APIOrderBookDataSource(OrderBookTrackerDataSource):
         async with aiohttp.ClientSession() as client:
             params = {"symbol": k2_utils.convert_to_exchange_trading_pair(trading_pair)}
             async with client.get(url=f"{constants.REST_URL}{constants.GET_ORDER_BOOK}",
-                                  params=params,
-                                  verify_ssl=False) as resp:
+                                  params=params) as resp:
                 if resp.status != 200:
                     raise IOError(
                         f"Error fetching OrderBook for {trading_pair} at {constants.EXCHANGE_NAME}. "
@@ -111,8 +108,11 @@ class K2APIOrderBookDataSource(OrderBookTrackerDataSource):
                 msg: str = await asyncio.wait_for(ws.recv(), timeout=self.MESSAGE_TIMEOUT)
                 yield msg
         except asyncio.TimeoutError:
-            pong_waiter = await ws.ping()
-            await asyncio.wait_for(pong_waiter, timeout=self.PING_TIMEOUT)
+            try:
+                pong_waiter = await ws.ping()
+                await asyncio.wait_for(pong_waiter, timeout=self.PING_TIMEOUT)
+            except asyncio.TimeoutError:
+                raise
         except websockets.exceptions.ConnectionClosed:
             return
         finally:

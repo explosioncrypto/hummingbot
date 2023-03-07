@@ -1,6 +1,6 @@
 # distutils: language=c++
 
-from libcpp cimport bool as cppbool
+from libcpp cimport bool
 from libcpp.string cimport string
 
 cdef extern from "../cpp/LimitOrder.h":
@@ -10,30 +10,17 @@ cdef extern from "../cpp/LimitOrder.h":
         LimitOrder()
         LimitOrder(string clientOrderID,
                    string tradingPair,
-                   cppbool isBuy,
+                   bool isBuy,
                    string baseCurrency,
                    string quoteCurrency,
                    PyObject *price,
                    PyObject *quantity)
-        LimitOrder(string clientOrderID,
-                   string tradingPair,
-                   cppbool isBuy,
-                   string baseCurrency,
-                   string quoteCurrency,
-                   PyObject *price,
-                   PyObject *quantity,
-                   PyObject *filledQuantity,
-                   long long creationTimestamp,
-                   short int status)
         LimitOrder(const LimitOrder &other)
         LimitOrder &operator=(const LimitOrder &other)
         string getClientOrderID()
         string getTradingPair()
-        cppbool getIsBuy()
+        bool getIsBuy()
         string getBaseCurrency()
         string getQuoteCurrency()
         PyObject *getPrice()
         PyObject *getQuantity()
-        PyObject *getFilledQuantity()
-        long long getCreationTimestamp()
-        short int getStatus()

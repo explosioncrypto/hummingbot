@@ -1,40 +1,10 @@
-.ONESHELL:
 .PHONY: test
-.PHONY: run_coverage
-.PHONY: report_coverage
-.PHONY: development-diff-cover
-.PHONY: docker
-.PHONY: install
-.PHONY: uninstall
-.PHONY: clean
-.PHONY: build
+
+.ONESHELL:
 
 test:
-	coverage run -m nose --exclude-dir="test/connector" --exclude-dir="test/debug" --exclude-dir="test/mock" --exclude-dir="test/hummingbot/connector/gateway"
+	find test/hummingbot/ -iname "test_*.py" | xargs nosetests -v -d
 
-run_coverage: test
-	coverage report
-	coverage html
+coverage:
+	find test/hummingbot/ -iname "test_*.py" | xargs nosetests -v -d --with-coverage --cover-inclusive --cover-package=hummingbot --cover-xml --cover-html
 
-report_coverage:
-	coverage report
-	coverage html
-
-development-diff-cover:
-	coverage xml
-	diff-cover --compare-branch=origin/development coverage.xml
-
-docker:
-	git clean -xdf && make clean && docker build -t hummingbot/hummingbot${TAG} -f Dockerfile .
-
-clean:
-	./clean
-
-install:
-	./install
-
-uninstall:
-	./uninstall
-
-build:
-	./compile

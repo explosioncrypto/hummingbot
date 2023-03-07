@@ -1,110 +1,155 @@
+#!/usr/bin/env python
+import aiohttp
 import asyncio
-from typing import TYPE_CHECKING, List, Optional
+import time
 
-import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
-from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
+import logging
+
+from typing import (
+    Optional,
+    AsyncIterable,
+    Dict,
+    Any,
+)
+
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.core.web_assistant.connections.data_types import WSJSONRequest, WSResponse
-from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
-from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
+from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
 
-if TYPE_CHECKING:
-    from hummingbot.connector.exchange.huobi.huobi_exchange import HuobiExchange
+HUOBI_API_ENDPOINT = "https://api.huobi.pro"
+HUOBI_WS_ENDPOINT = "wss://api.huobi.pro/ws/v2"
+
+HUOBI_ACCOUNT_UPDATE_TOPIC = "accounts.update#2"
+HUOBI_ORDER_UPDATE_TOPIC = "orders#*"
+
+HUOBI_SUBSCRIBE_TOPICS = {
+    HUOBI_ORDER_UPDATE_TOPIC,
+    HUOBI_ACCOUNT_UPDATE_TOPIC
+}
 
 
 class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
+    _hausds_logger: Optional[HummingbotLogger] = None
 
-    _logger: Optional[HummingbotLogger] = None
+    @classmethod
+    def logger(cls) -> HummingbotLogger:
+        if cls._hausds_logger is None:
+            cls._hausds_logger = logging.getLogger(__name__)
 
-    def __init__(self, huobi_auth: HuobiAuth,
-                 trading_pairs: List[str],
-                 connector: 'HuobiExchange',
-                 api_factory: Optional[WebAssistantsFactory]):
+        return cls._hausds_logger
+
+    def __init__(self, huobi_auth: HuobiAuth):
+        self._current_listen_key = None
+        self._current_endpoint = None
+        self._listen_for_user_steam_task = None
+        self._last_recv_time: float = 0
         self._auth: HuobiAuth = huobi_auth
-        self._connector = connector
-        self._api_factory = api_factory
-        self._trading_pairs = trading_pairs
+        self._client_session: aiohttp.ClientSession = None
+        self._websocket_connection: aiohttp.ClientWebSocketResponse = None
         super().__init__()
 
-    async def _connected_websocket_assistant(self) -> WSAssistant:
-        ws: WSAssistant = await self._api_factory.get_ws_assistant()
-        await ws.connect(ws_url=CONSTANTS.WS_PRIVATE_URL, ping_timeout=CONSTANTS.WS_HEARTBEAT_TIME_INTERVAL)
-        return ws
+    @property
+    def last_recv_time(self) -> float:
+        return self._last_recv_time
 
-    async def _authenticate_client(self, ws: WSAssistant):
+    async def _authenticate_client(self):
         """
         Sends an Authentication request to Huobi's WebSocket API Server
         """
-        try:
-            ws_request: WSJSONRequest = WSJSONRequest(
-                {
-                    "action": "req",
-                    "ch": "auth",
-                    "params": {},
-                }
-            )
-            auth_params = self._auth.generate_auth_params_for_WS(ws_request)
-            ws_request.payload['params'] = auth_params
-            await ws.send(ws_request)
-            resp: WSResponse = await ws.receive()
-            auth_response = resp.data
-            if auth_response.get("code", 0) != 200:
-                raise ValueError(f"User Stream Authentication Fail! {auth_response}")
-            self.logger().info("Successfully authenticated to user stream...")
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            self.logger().error(f"Error occurred authenticating websocket connection... Error: {str(e)}", exc_info=True)
-            raise
+        signed_params = self._auth.add_auth_to_params(method="get",
+                                                      path_url="/ws/v2",
+                                                      is_ws=True
+                                                      )
+        auth_request: Dict[str: Any] = {
+            "action": "req",
+            "ch": "auth",
+            "params": {
+                "authType": "api",
+                "accessKey": signed_params["accessKey"],
+                "signatureMethod": signed_params["signatureMethod"],
+                "signatureVersion": signed_params["signatureVersion"],
+                "timestamp": signed_params["timestamp"],
+                "signature": signed_params["signature"]
+            }
+        }
+        await self._websocket_connection.send_json(auth_request)
+        resp: aiohttp.WSMessage = await self._websocket_connection.receive()
+        msg = resp.json()
+        if msg.get("code", 0) == 200:
+            self.logger().info("Successfully authenticated")
 
-    async def _subscribe_topic(self, topic: str, websocket_assistant: WSAssistant):
+    async def _subscribe_topic(self, topic: str):
+        subscribe_request = {
+            "action": "sub",
+            "ch": topic
+        }
+        await self._websocket_connection.send_json(subscribe_request)
+        self._last_recv_time = time.time()
+
+    async def get_ws_connection(self) -> aiohttp.client._WSRequestContextManager:
+        if self._client_session is None:
+            self._client_session = aiohttp.ClientSession()
+
+        stream_url: str = f"{HUOBI_WS_ENDPOINT}"
+        return self._client_session.ws_connect(stream_url)
+
+    async def _socket_user_stream(self) -> AsyncIterable[str]:
         """
-        Specifies which event channel to subscribe to
-
-        :param topic: the event type to subscribe to
-
-        :param websocket_assistant: the websocket assistant used to connect to the exchange
+        Main iterator that manages the websocket connection.
         """
-        try:
-            subscribe_request: WSJSONRequest = WSJSONRequest({"action": "sub", "ch": topic})
-            await websocket_assistant.send(subscribe_request)
-            self.logger().info(f"Subscribed to {topic}")
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self.logger().error(f"Cannot subscribe to user stream topic: {topic}")
-            raise
+        while True:
+            try:
+                raw_msg = await asyncio.wait_for(self._websocket_connection.receive(), timeout=30)
+                self._last_recv_time = time.time()
 
-    async def _subscribe_channels(self, websocket_assistant: WSAssistant):
-        """
-        Subscribes to order events, balance events and account events
+                if raw_msg.type != aiohttp.WSMsgType.TEXT:
+                    # since all ws messages from huobi are TEXT, any other type should cause ws to reconnect
+                    return
 
-        :param websocket_assistant: the websocket assistant used to connect to the exchange
-        """
-        try:
-            await self._authenticate_client(websocket_assistant)
-            await self._subscribe_topic(CONSTANTS.HUOBI_ACCOUNT_UPDATE_TOPIC, websocket_assistant)
-            for trading_pair in self._trading_pairs:
-                exchange_symbol = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
-                await self._subscribe_topic(CONSTANTS.HUOBI_TRADE_DETAILS_TOPIC.format(exchange_symbol),
-                                            websocket_assistant)
-                await self._subscribe_topic(CONSTANTS.HUOBI_ORDER_UPDATE_TOPIC.format(exchange_symbol),
-                                            websocket_assistant)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self.logger().error("Unexpected error occurred subscribing to private user streams...", exc_info=True)
-            raise
+                message = raw_msg.json()
 
-    async def _process_websocket_messages(self, websocket_assistant: WSAssistant, queue: asyncio.Queue):
-        async for ws_response in websocket_assistant.iter_messages():
-            data = ws_response.data
-            if data["action"] == "ping":
-                pong_request = WSJSONRequest(payload={"action": "pong", "data": data["data"]})
-                await websocket_assistant.send(request=pong_request)
-            elif data["action"] == "sub":
-                if data.get("code") != 200:
-                    raise ValueError(f"Error subscribing to topic: {data.get('ch')} ({data})")
-            else:
-                queue.put_nowait(data)
+                # Handle ping messages
+                if message["action"] == "ping":
+                    pong_response = {
+                        "action": "pong",
+                        "data": message["data"]
+                    }
+                    await self._websocket_connection.send_json(pong_response)
+                    continue
+
+                yield message
+            except asyncio.TimeoutError:
+                self.logger().error("Userstream websocket timeout, going to reconnect...")
+                return
+
+    async def listen_for_user_stream(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
+        while True:
+            try:
+                # Initialize Websocket Connection
+                async with (await self.get_ws_connection()) as ws:
+                    self._websocket_connection = ws
+
+                    # Authentication
+                    await self._authenticate_client()
+
+                    # Subscribe to Topic(s)
+                    await self._subscribe_topic(HUOBI_ORDER_UPDATE_TOPIC)
+                    await self._subscribe_topic(HUOBI_ACCOUNT_UPDATE_TOPIC)
+
+                    # Listen to WebSocket Connection
+                    async for message in self._socket_user_stream():
+                        output.put_nowait(message)
+
+            except asyncio.CancelledError:
+                raise
+            except IOError as e:
+                self.logger().error(e, exc_info=True)
+            except Exception as e:
+                self.logger().error(f"Unexpected error occurred! {e} {message}", exc_info=True)
+            finally:
+                if self._websocket_connection is not None:
+                    await self._websocket_connection.close()
+                    self._websocket_connection = None
+                if self._client_session is not None:
+                    await self._client_session.close()
+                    self._client_session = None

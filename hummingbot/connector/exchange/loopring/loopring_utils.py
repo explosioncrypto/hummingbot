@@ -1,9 +1,8 @@
-from typing import Any, Dict
-
 import aiohttp
-from pydantic import Field, SecretStr
+from typing import Dict, Any
 
-from hummingbot.client.config.config_data_types import BaseConnectorConfigMap, ClientFieldData
+from hummingbot.client.config.config_var import ConfigVar
+from hummingbot.client.config.config_methods import using_exchange
 
 CENTRALIZED = True
 
@@ -14,51 +13,32 @@ DEFAULT_FEES = [0.0, 0.2]
 LOOPRING_ROOT_API = "https://api3.loopring.io"
 LOOPRING_WS_KEY_PATH = "/v2/ws/key"
 
-
-class LoopringConfigMap(BaseConnectorConfigMap):
-    connector: str = Field(default="loopring", client_data=None)
-    loopring_accountid: SecretStr = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your Loopring account id",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-    loopring_exchangeaddress: SecretStr = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: "Enter the Loopring exchange address",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-    loopring_private_key: SecretStr = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your Loopring private key",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-    loopring_api_key: SecretStr = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your loopring api key",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-
-    class Config:
-        title = "loopring"
-
-
-KEYS = LoopringConfigMap.construct()
+KEYS = {
+    "loopring_accountid":
+        ConfigVar(key="loopring_accountid",
+                  prompt="Enter your Loopring account id >>> ",
+                  required_if=using_exchange("loopring"),
+                  is_secure=True,
+                  is_connect_key=True),
+    "loopring_exchangeaddress":
+        ConfigVar(key="loopring_exchangeaddress",
+                  prompt="Enter the Loopring exchange address >>> ",
+                  required_if=using_exchange("loopring"),
+                  is_secure=True,
+                  is_connect_key=True),
+    "loopring_private_key":
+        ConfigVar(key="loopring_private_key",
+                  prompt="Enter your Loopring private key >>> ",
+                  required_if=using_exchange("loopring"),
+                  is_secure=True,
+                  is_connect_key=True),
+    "loopring_api_key":
+        ConfigVar(key="loopring_api_key",
+                  prompt="Enter your loopring api key >>> ",
+                  required_if=using_exchange("loopring"),
+                  is_secure=True,
+                  is_connect_key=True)
+}
 
 
 def convert_from_exchange_trading_pair(exchange_trading_pair: str) -> str:

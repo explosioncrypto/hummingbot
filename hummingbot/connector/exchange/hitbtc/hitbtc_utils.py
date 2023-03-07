@@ -1,16 +1,20 @@
+import aiohttp
 import asyncio
 import random
 import re
-from typing import Any, Dict, Optional, Tuple
-
-import aiohttp
 from dateutil.parser import parse as dateparse
-from pydantic import Field, SecretStr
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    Tuple,
+)
 
-from hummingbot.client.config.config_data_types import BaseConnectorConfigMap, ClientFieldData
 from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
-
+from hummingbot.client.config.config_var import ConfigVar
+from hummingbot.client.config.config_methods import using_exchange
 from .hitbtc_constants import Constants
+
 
 TRADING_PAIR_SPLITTER = re.compile(Constants.TRADING_PAIR_SPLITTER)
 
@@ -46,10 +50,6 @@ class RequestId:
 
 def split_trading_pair(trading_pair: str) -> Optional[Tuple[str, str]]:
     try:
-        if trading_pair == 'USDTUSD':
-            return 'USD', 'TUSD'
-        elif trading_pair == 'USDTGUSD':
-            return 'USD', 'GUSD'
         m = TRADING_PAIR_SPLITTER.match(trading_pair)
         return m.group(1), m.group(2)
     # Exceptions are now logged as warnings in trading pair fetcher
@@ -66,6 +66,27 @@ def translate_asset(asset_name: str) -> str:
             if asset_name == asset_replacement[inv]:
                 return asset_replacement[(0 if inv else 1)]
     return asset_name
+
+
+def translate_assets(hb_trading_pair: str) -> str:
+    assets = hb_trading_pair.split('-')
+    for x in range(len(assets)):
+        assets[x] = translate_asset(assets[x])
+    return '-'.join(assets)
+
+
+def convert_from_exchange_trading_pair(ex_trading_pair: str) -> Optional[str]:
+    regex_match = split_trading_pair(ex_trading_pair)
+    if regex_match is None:
+        return None
+    # HitBTC uses uppercase (BTCUSDT)
+    base_asset, quote_asset = split_trading_pair(ex_trading_pair)
+    return translate_assets(f"{base_asset.upper()}-{quote_asset.upper()}")
+
+
+def convert_to_exchange_trading_pair(hb_trading_pair: str) -> str:
+    # HitBTC uses uppercase (BTCUSDT)
+    return translate_assets(hb_trading_pair).replace("-", "").upper()
 
 
 def get_new_client_order_id(is_buy: bool, trading_pair: str) -> str:
@@ -137,29 +158,17 @@ async def api_call_with_retries(method,
     return parsed_response
 
 
-class HitbtcConfigMap(BaseConnectorConfigMap):
-    connector: str = Field(default="hitbtc", client_data=None)
-    hitbtc_api_key: SecretStr = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: f"Enter your {Constants.EXCHANGE_NAME} API key",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-    hitbtc_secret_key: SecretStr = Field(
-        default=...,
-        client_data=ClientFieldData(
-            prompt=lambda cm: f"Enter your {Constants.EXCHANGE_NAME} secret key",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
-        )
-    )
-
-    class Config:
-        title = "hitbtc"
-
-
-KEYS = HitbtcConfigMap.construct()
+KEYS = {
+    "hitbtc_api_key":
+        ConfigVar(key="hitbtc_api_key",
+                  prompt=f"Enter your {Constants.EXCHANGE_NAME} API key >>> ",
+                  required_if=using_exchange("hitbtc"),
+                  is_secure=True,
+                  is_connect_key=True),
+    "hitbtc_secret_key":
+        ConfigVar(key="hitbtc_secret_key",
+                  prompt=f"Enter your {Constants.EXCHANGE_NAME} secret key >>> ",
+                  required_if=using_exchange("hitbtc"),
+                  is_secure=True,
+                  is_connect_key=True),
+}

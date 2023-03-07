@@ -1,154 +1,264 @@
+#!/usr/bin/env python
 import asyncio
-from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+import logging
+import aiohttp
+import websockets
+import ujson
+import time
+import pandas as pd
 
-from hummingbot.connector.exchange.ascend_ex import ascend_ex_constants as CONSTANTS, ascend_ex_web_utils as web_utils
-from hummingbot.core.data_type.common import TradeType
-from hummingbot.core.data_type.order_book_message import OrderBookMessage, OrderBookMessageType
+from typing import Optional, List, Dict, Any, AsyncIterable
+from hummingbot.core.data_type.order_book import OrderBook
+from hummingbot.core.data_type.order_book_message import OrderBookMessage
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod, WSJSONRequest
-from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
-from hummingbot.core.web_assistant.ws_assistant import WSAssistant
+from hummingbot.core.utils.async_utils import safe_gather
 from hummingbot.logger import HummingbotLogger
-
-if TYPE_CHECKING:
-    from hummingbot.connector.exchange.ascend_ex.ascend_ex_exchange import AscendExExchange
+from hummingbot.connector.exchange.ascend_ex.ascend_ex_active_order_tracker import AscendExActiveOrderTracker
+from hummingbot.connector.exchange.ascend_ex.ascend_ex_order_book import AscendExOrderBook
+from hummingbot.connector.exchange.ascend_ex.ascend_ex_utils import convert_from_exchange_trading_pair, convert_to_exchange_trading_pair
+from hummingbot.connector.exchange.ascend_ex.ascend_ex_constants import EXCHANGE_NAME, REST_URL, WS_URL, PONG_PAYLOAD
 
 
 class AscendExAPIOrderBookDataSource(OrderBookTrackerDataSource):
+    MAX_RETRIES = 20
+    MESSAGE_TIMEOUT = 30.0
+    SNAPSHOT_TIMEOUT = 10.0
+    PING_TIMEOUT = 15.0
+
     _logger: Optional[HummingbotLogger] = None
 
-    def __init__(
-        self,
-        trading_pairs: List[str],
-        connector: "AscendExExchange",
-        api_factory: Optional[WebAssistantsFactory] = None,
-    ):
+    @classmethod
+    def logger(cls) -> HummingbotLogger:
+        if cls._logger is None:
+            cls._logger = logging.getLogger(__name__)
+        return cls._logger
+
+    def __init__(self, trading_pairs: List[str] = None):
         super().__init__(trading_pairs)
-        self._connector = connector
-        self._trade_messages_queue_key = CONSTANTS.TRADE_TOPIC_ID
-        self._diff_messages_queue_key = CONSTANTS.DIFF_TOPIC_ID
-        self._api_factory = api_factory
+        self._trading_pairs: List[str] = trading_pairs
+        self._snapshot_msg: Dict[str, any] = {}
 
-    async def get_last_traded_prices(self, trading_pairs: List[str], domain: Optional[str] = None) -> Dict[str, float]:
-        return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
+    @classmethod
+    async def get_last_traded_prices(cls, trading_pairs: List[str]) -> Dict[str, float]:
+        result = {}
 
-    async def _request_order_book_snapshot(self, trading_pair: str) -> Dict[str, Any]:
+        for trading_pair in trading_pairs:
+            async with aiohttp.ClientSession() as client:
+                resp = await client.get(f"{REST_URL}/trades?symbol={convert_to_exchange_trading_pair(trading_pair)}")
+                if resp.status != 200:
+                    raise IOError(
+                        f"Error fetching last traded prices at {EXCHANGE_NAME}. "
+                        f"HTTP status is {resp.status}."
+                    )
+
+                resp_json = await resp.json()
+                if resp_json.get("code") != 0:
+                    raise IOError(
+                        f"Error fetching last traded prices at {EXCHANGE_NAME}. "
+                        f"Error is {resp_json.message}."
+                    )
+
+                trades = resp_json.get("data").get("data")
+                if (len(trades) == 0):
+                    continue
+
+                # last trade is the most recent trade
+                result[trading_pair] = float(trades[-1].get("p"))
+
+        return result
+
+    @staticmethod
+    async def fetch_trading_pairs() -> List[str]:
+        async with aiohttp.ClientSession() as client:
+            resp = await client.get(f"{REST_URL}/ticker")
+
+            if resp.status != 200:
+                # Do nothing if the request fails -- there will be no autocomplete for kucoin trading pairs
+                return []
+
+            data: Dict[str, Dict[str, Any]] = await resp.json()
+            return [convert_from_exchange_trading_pair(item["symbol"]) for item in data["data"]]
+
+    @staticmethod
+    async def get_order_book_data(trading_pair: str) -> Dict[str, any]:
         """
-        Retrieves a copy of the full order book from the exchange, for a particular trading pair.
-
-        :param trading_pair: the trading pair for which the order book will be retrieved
-
-        :return: the response from the exchange (JSON dictionary)
+        Get whole orderbook
         """
-        params = {"symbol": await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)}
+        async with aiohttp.ClientSession() as client:
+            resp = await client.get(f"{REST_URL}/depth?symbol={convert_to_exchange_trading_pair(trading_pair)}")
+            if resp.status != 200:
+                raise IOError(
+                    f"Error fetching OrderBook for {trading_pair} at {EXCHANGE_NAME}. "
+                    f"HTTP status is {resp.status}."
+                )
 
-        rest_assistant = await self._api_factory.get_rest_assistant()
-        data = await rest_assistant.execute_request(
-            url=web_utils.public_rest_url(path_url=CONSTANTS.DEPTH_PATH_URL),
-            params=params,
-            method=RESTMethod.GET,
-            throttler_limit_id=CONSTANTS.DEPTH_PATH_URL,
+            data: List[Dict[str, Any]] = await safe_gather(resp.json())
+            item = data[0]
+            if item.get("code") != 0:
+                raise IOError(
+                    f"Error fetching OrderBook for {trading_pair} at {EXCHANGE_NAME}. "
+                    f"Error is {item.message}."
+                )
+
+            return item["data"]
+
+    async def get_new_order_book(self, trading_pair: str) -> OrderBook:
+        snapshot: Dict[str, Any] = await self.get_order_book_data(trading_pair)
+        snapshot_timestamp: float = snapshot.get("data").get("ts")
+        snapshot_msg: OrderBookMessage = AscendExOrderBook.snapshot_message_from_exchange(
+            snapshot.get("data"),
+            snapshot_timestamp,
+            metadata={"trading_pair": trading_pair}
         )
+        order_book = self.order_book_create_function()
+        active_order_tracker: AscendExActiveOrderTracker = AscendExActiveOrderTracker()
+        bids, asks = active_order_tracker.convert_snapshot_message_to_order_book_row(snapshot_msg)
+        order_book.apply_snapshot(bids, asks, snapshot_msg.update_id)
+        return order_book
 
-        return data
+    async def listen_for_trades(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
+        while True:
+            try:
+                trading_pairs = ",".join(list(
+                    map(lambda trading_pair: convert_to_exchange_trading_pair(trading_pair), self._trading_pairs)
+                ))
+                payload = {
+                    "op": "sub",
+                    "ch": f"trades:{trading_pairs}"
+                }
 
-    async def _subscribe_channels(self, ws: WSAssistant):
+                async with websockets.connect(WS_URL) as ws:
+                    ws: websockets.WebSocketClientProtocol = ws
+                    await ws.send(ujson.dumps(payload))
+
+                    async for raw_msg in self._inner_messages(ws):
+                        try:
+                            msg = ujson.loads(raw_msg)
+                            if (msg is None or msg.get("m") != "trades"):
+                                continue
+
+                            trading_pair: str = convert_from_exchange_trading_pair(msg.get("symbol"))
+
+                            for trade in msg.get("data"):
+                                trade_timestamp: int = trade.get("ts")
+                                trade_msg: OrderBookMessage = AscendExOrderBook.trade_message_from_exchange(
+                                    trade,
+                                    trade_timestamp,
+                                    metadata={"trading_pair": trading_pair}
+                                )
+                                output.put_nowait(trade_msg)
+                        except Exception:
+                            raise
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger().debug(str(e))
+                self.logger().error("Unexpected error with WebSocket connection. Retrying after 30 seconds...",
+                                    exc_info=True)
+                await asyncio.sleep(30.0)
+
+    async def listen_for_order_book_diffs(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
+        while True:
+            try:
+                trading_pairs = ",".join(list(
+                    map(lambda trading_pair: convert_to_exchange_trading_pair(trading_pair), self._trading_pairs)
+                ))
+                ch = f"depth:{trading_pairs}"
+                payload = {
+                    "op": "sub",
+                    "ch": ch
+                }
+
+                async with websockets.connect(WS_URL) as ws:
+                    ws: websockets.WebSocketClientProtocol = ws
+                    await ws.send(ujson.dumps(payload))
+
+                    async for raw_msg in self._inner_messages(ws):
+                        try:
+                            msg = ujson.loads(raw_msg)
+                            if msg is None:
+                                continue
+                            if msg.get("m", '') == "ping":
+                                await ws.send(ujson.dumps(dict(op="pong")))
+                            if msg.get("m", '') == "depth":
+                                msg_timestamp: int = msg.get("data").get("ts")
+                                trading_pair: str = convert_from_exchange_trading_pair(msg.get("symbol"))
+                                order_book_message: OrderBookMessage = AscendExOrderBook.diff_message_from_exchange(
+                                    msg.get("data"),
+                                    msg_timestamp,
+                                    metadata={"trading_pair": trading_pair}
+                                )
+                                output.put_nowait(order_book_message)
+                        except Exception:
+                            raise
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger().debug(str(e))
+                self.logger().error("Unexpected error with WebSocket connection. Retrying after 30 seconds...",
+                                    exc_info=True)
+                await asyncio.sleep(30.0)
+
+    async def listen_for_order_book_snapshots(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
         """
-        Subscribes to the trade events and diff orders events through the provided websocket connection.
-        :param ws: the websocket assistant used to connect to the exchange
+        Listen for orderbook snapshots by fetching orderbook
         """
+        while True:
+            try:
+                for trading_pair in self._trading_pairs:
+                    try:
+                        snapshot: Dict[str, any] = await self.get_order_book_data(trading_pair)
+                        snapshot_timestamp: float = snapshot.get("data").get("ts")
+                        snapshot_msg: OrderBookMessage = AscendExOrderBook.snapshot_message_from_exchange(
+                            snapshot.get("data"),
+                            snapshot_timestamp,
+                            metadata={"trading_pair": trading_pair}
+                        )
+                        output.put_nowait(snapshot_msg)
+                        self.logger().debug(f"Saved order book snapshot for {trading_pair}")
+                        # Be careful not to go above API rate limits.
+                        await asyncio.sleep(5.0)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        self.logger().network(
+                            "Unexpected error with WebSocket connection.",
+                            exc_info=True,
+                            app_warning_msg="Unexpected error with WebSocket connection. Retrying in 5 seconds. "
+                                            "Check network connection."
+                        )
+                        await asyncio.sleep(5.0)
+                this_hour: pd.Timestamp = pd.Timestamp.utcnow().replace(minute=0, second=0, microsecond=0)
+                next_hour: pd.Timestamp = this_hour + pd.Timedelta(hours=1)
+                delta: float = next_hour.timestamp() - time.time()
+                await asyncio.sleep(delta)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger().error("Unexpected error.", exc_info=True)
+                await asyncio.sleep(5.0)
+
+    async def _inner_messages(
+        self,
+        ws: websockets.WebSocketClientProtocol
+    ) -> AsyncIterable[str]:
+        # Terminate the recv() loop as soon as the next message timed out, so the outer loop can reconnect.
         try:
-            for trading_pair in self._trading_pairs:
-                trading_symbol = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
-                for topic in [CONSTANTS.DIFF_TOPIC_ID, CONSTANTS.TRADE_TOPIC_ID]:
-                    payload = {"op": CONSTANTS.SUB_ENDPOINT_NAME, "ch": f"{topic}:{trading_symbol}"}
-                    await ws.send(WSJSONRequest(payload=payload))
-
-            self.logger().info("Subscribed to public order book and trade channels...")
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self.logger().error(
-                "Unexpected error occurred subscribing to order book trading and delta streams...", exc_info=True
-            )
-            raise
-
-    async def _connected_websocket_assistant(self) -> WSAssistant:
-        ws: WSAssistant = await self._api_factory.get_ws_assistant()
-        await ws.connect(ws_url=f"{CONSTANTS.WS_URL}/{CONSTANTS.STREAM_PATH_URL}")
-        return ws
-
-    async def _order_book_snapshot(self, trading_pair: str) -> OrderBookMessage:
-        snapshot_response: Dict[str, Any] = await self._request_order_book_snapshot(trading_pair)
-        snapshot_timestamp = float(snapshot_response["data"]["data"]["ts"]) / 1000
-
-        order_book_message_content = {
-            "trading_pair": trading_pair,
-            "update_id": snapshot_timestamp,
-            "bids": snapshot_response["data"]["data"]["bids"],
-            "asks": snapshot_response["data"]["data"]["asks"],
-        }
-        snapshot_msg: OrderBookMessage = OrderBookMessage(
-            OrderBookMessageType.SNAPSHOT, order_book_message_content, snapshot_timestamp
-        )
-
-        return snapshot_msg
-
-    async def _parse_trade_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
-        trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["symbol"])
-        for trade_data in raw_message["data"]:
-            timestamp: float = trade_data["ts"] / 1000
-            message_content = {
-                "trade_id": timestamp,  # trade id isn't provided so using timestamp instead
-                "trading_pair": trading_pair,
-                "trade_type": float(TradeType.BUY.value) if trade_data["bm"] else float(TradeType.SELL.value),
-                "amount": Decimal(trade_data["q"]),
-                "price": Decimal(trade_data["p"]),
-            }
-            trade_message: Optional[OrderBookMessage] = OrderBookMessage(
-                message_type=OrderBookMessageType.TRADE, content=message_content, timestamp=timestamp
-            )
-
-            message_queue.put_nowait(trade_message)
-
-    async def _parse_order_book_diff_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
-        diff_data: Dict[str, Any] = raw_message["data"]
-        timestamp: float = diff_data["ts"] / 1000
-
-        trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["symbol"])
-
-        message_content = {
-            "trading_pair": trading_pair,
-            "update_id": timestamp,
-            "bids": diff_data["bids"],
-            "asks": diff_data["asks"],
-        }
-        diff_message: OrderBookMessage = OrderBookMessage(OrderBookMessageType.DIFF, message_content, timestamp)
-
-        message_queue.put_nowait(diff_message)
-
-    def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
-        channel = ""
-        if "data" in event_message:
-            event_channel = event_message.get("m")
-            if event_channel == CONSTANTS.TRADE_TOPIC_ID:
-                channel = self._trade_messages_queue_key
-            if event_channel == CONSTANTS.DIFF_TOPIC_ID:
-                channel = self._diff_messages_queue_key
-        return channel
-
-    async def _process_message_for_unknown_channel(
-        self, event_message: Dict[str, Any], websocket_assistant: WSAssistant
-    ):
-        """
-        Processes a message coming from a not identified channel.
-        Does nothing by default but allows subclasses to reimplement
-
-        :param event_message: the event received through the websocket connection
-        :param websocket_assistant: the websocket connection to use to interact with the exchange
-        """
-        if event_message.get("m") == "ping":
-            pong_payloads = {"op": "pong"}
-            pong_request = WSJSONRequest(payload=pong_payloads)
-            await websocket_assistant.send(request=pong_request)
+            while True:
+                try:
+                    raw_msg: str = await asyncio.wait_for(ws.recv(), timeout=self.MESSAGE_TIMEOUT)
+                    yield raw_msg
+                except asyncio.TimeoutError:
+                    try:
+                        pong_waiter = ws.send(ujson.dumps(PONG_PAYLOAD))
+                        await asyncio.wait_for(pong_waiter, timeout=self.PING_TIMEOUT)
+                        self._last_recv_time = time.time()
+                    except asyncio.TimeoutError:
+                        raise
+        except asyncio.TimeoutError:
+            self.logger().warning("WebSocket ping timed out. Going to reconnect...")
+            return
+        except websockets.ConnectionClosed:
+            return
+        finally:
+            await ws.close()

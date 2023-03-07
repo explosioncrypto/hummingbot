@@ -3,14 +3,14 @@ from typing import Optional
 
 from sqlalchemy import (
     Column,
-    Integer,
-    Numeric,
     String,
+    Numeric,
+    Integer,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Session
 
-from hummingbot.model import HummingbotBase
+from . import HummingbotBase
 
 
 class InventoryCost(HummingbotBase):
@@ -68,3 +68,8 @@ class InventoryCost(HummingbotBase):
                 quote_volume=float(quote_volume),
             )
             sql_session.add(record)
+
+        try:
+            sql_session.commit()
+        except Exception:
+            sql_session.rollback()

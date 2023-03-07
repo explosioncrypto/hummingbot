@@ -6,15 +6,14 @@ by ConfigVar.
 
 from typing import (
     Optional,
-    Callable,
-    Union,
+    Callable
 )
 import inspect
 
 # function types passed into ConfigVar
 RequiredIf = Callable[[str], Optional[bool]]
 Validator = Callable[[str], Optional[str]]
-Prompt = Union[Callable[[str], Optional[str]], Optional[str]]
+Prompt = Callable[[str], Optional[str]]
 OnValidated = Callable
 
 

@@ -1,286 +1,211 @@
+#!/usr/bin/env python
+
 import asyncio
-import sys
-import time
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
-import dateutil.parser as dp
+import aiohttp
+import logging
+# import pandas as pd
+# import math
 
-from hummingbot.connector.derivative.dydx_perpetual import (
-    dydx_perpetual_constants as CONSTANTS,
-    dydx_perpetual_web_utils as web_utils,
-)
-from hummingbot.core.data_type.common import TradeType
-from hummingbot.core.data_type.funding_info import FundingInfo, FundingInfoUpdate
-from hummingbot.core.data_type.order_book import OrderBookMessage
-from hummingbot.core.data_type.order_book_message import OrderBookMessageType
-from hummingbot.core.data_type.perpetual_api_order_book_data_source import PerpetualAPIOrderBookDataSource
-from hummingbot.core.utils.tracking_nonce import NonceCreator
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod, WSJSONRequest
-from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
-from hummingbot.core.web_assistant.ws_assistant import WSAssistant
+import requests
+import cachetools.func
 
-if TYPE_CHECKING:
-    from hummingbot.connector.derivative.dydx_perpetual.dydx_perpetual_derivative import DydxPerpetualDerivative
+from typing import AsyncIterable, Dict, List, Optional, Any
+
+import time
+import ujson
+import websockets
+from websockets.exceptions import ConnectionClosed
+
+from hummingbot.connector.derivative.dydx_perpetual.dydx_perpetual_order_book import DydxPerpetualOrderBook
+from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
+from hummingbot.logger import HummingbotLogger
+from hummingbot.core.data_type.order_book import OrderBook
+from hummingbot.core.data_type.order_book_message import OrderBookMessage
+from hummingbot.core.data_type.order_book_row import ClientOrderBookRow
 
 
-class DydxPerpetualAPIOrderBookDataSource(PerpetualAPIOrderBookDataSource):
-    FULL_ORDER_BOOK_RESET_DELTA_SECONDS = sys.maxsize
+MARKETS_URL = "/markets"
+TICKER_URL = "/stats"
+SNAPSHOT_URL = "/orderbook/"
 
-    def __init__(
-        self,
-        trading_pairs: List[str],
-        connector: "DydxPerpetualDerivative",
-        api_factory: WebAssistantsFactory,
-        domain: str = CONSTANTS.DEFAULT_DOMAIN,
-    ):
+WS_URL = "wss://api.dydx.exchange/v3/ws"
+DYDX_V3_API_URL = "https://api.dydx.exchange/v3"
+
+
+class DydxPerpetualAPIOrderBookDataSource(OrderBookTrackerDataSource):
+
+    MESSAGE_TIMEOUT = 30.0
+    PING_TIMEOUT = 10.0
+
+    __daobds__logger: Optional[HummingbotLogger] = None
+
+    @classmethod
+    def logger(cls) -> HummingbotLogger:
+        if cls.__daobds__logger is None:
+            cls.__daobds__logger = logging.getLogger(__name__)
+        return cls.__daobds__logger
+
+    def __init__(self, trading_pairs: List[str] = None, rest_api_url="", websocket_url="", token_configuration=None):
         super().__init__(trading_pairs)
-        self._connector = connector
-        self._api_factory = api_factory
-        self._domain = domain
-        self._nonce_provider = NonceCreator.for_microseconds()
+        self.REST_URL = rest_api_url
+        self.WS_URL = websocket_url
+        self._get_tracking_pair_done_event: asyncio.Event = asyncio.Event()
+        self.order_book_create_function = lambda: OrderBook()
 
-    def _time(self):
-        return time.time()
+    @classmethod
+    async def get_last_traded_prices(cls, trading_pairs: List[str]) -> Dict[str, float]:
+        async with aiohttp.ClientSession() as client:
+            retval = {}
+            for pair in trading_pairs:
+                resp = await client.get(f"{DYDX_V3_API_URL}{TICKER_URL}/{pair}")
+                resp_json = await resp.json()
+                retval[pair] = float(resp_json["markets"][pair]["close"])
+            return retval
 
-    async def get_last_traded_prices(self, trading_pairs: List[str], domain: Optional[str] = None) -> Dict[str, float]:
-        return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
+    @property
+    def order_book_class(self) -> DydxPerpetualOrderBook:
+        return DydxPerpetualOrderBook
 
-    async def get_funding_info(self, trading_pair: str) -> FundingInfo:
-        funding_info_response = await self._request_complete_funding_info(trading_pair)
-        market_info: Dict[str, Any] = funding_info_response["markets"][trading_pair]
-        funding_info = FundingInfo(
-            trading_pair=trading_pair,
-            index_price=Decimal(str(market_info["indexPrice"])),
-            mark_price=Decimal(str(market_info["oraclePrice"])),
-            next_funding_utc_timestamp=int(dp.parse(market_info["nextFundingAt"]).timestamp()),
-            rate=Decimal(str(market_info["nextFundingRate"])),
-        )
-        return funding_info
+    @property
+    def trading_pairs(self) -> List[str]:
+        return self._trading_pairs
 
-    async def _subscribe_channels(self, ws: WSAssistant):
+    async def get_snapshot(self, client: aiohttp.ClientSession, trading_pair: str, level: int = 0) -> Dict[str, any]:
+        async with client.get(f"{DYDX_V3_API_URL}{SNAPSHOT_URL}/{trading_pair}") as response:
+            response: aiohttp.ClientResponse = response
+            if response.status != 200:
+                raise IOError(
+                    f"Error fetching dydx market snapshot for {trading_pair}. " f"HTTP status is {response.status}."
+                )
+            data: Dict[str, Any] = await response.json()
+            data["trading_pair"] = trading_pair
+            return data
+
+    async def get_new_order_book(self, trading_pair: str) -> OrderBook:
+        async with aiohttp.ClientSession() as client:
+            snapshot: Dict[str, Any] = await self.get_snapshot(client, trading_pair, 1000)
+            snapshot_timestamp: float = time.time()
+            snapshot_msg: OrderBookMessage = DydxPerpetualOrderBook.snapshot_message_from_exchange(
+                snapshot,
+                snapshot_timestamp,
+                metadata={"id": trading_pair, "rest": True}
+            )
+            order_book: OrderBook = self.order_book_create_function()
+            bids = [ClientOrderBookRow(Decimal(bid["price"]), Decimal(bid["amount"]), snapshot_msg.update_id) for bid in snapshot_msg.bids]
+            asks = [ClientOrderBookRow(Decimal(ask["price"]), Decimal(ask["amount"]), snapshot_msg.update_id) for ask in snapshot_msg.asks]
+            order_book.apply_snapshot(bids, asks, snapshot_msg.update_id)
+            return order_book
+
+    async def _inner_messages(self, ws: websockets.WebSocketClientProtocol) -> AsyncIterable[str]:
+        # Terminate the recv() loop as soon as the next message timed out, so the outer loop can reconnect.
         try:
-            for trading_pair in self._trading_pairs:
-                subscribe_orderbook_request: WSJSONRequest = WSJSONRequest(
-                    payload={
-                        "type": CONSTANTS.WS_TYPE_SUBSCRIBE,
-                        "channel": CONSTANTS.WS_CHANNEL_ORDERBOOK,
-                        "id": trading_pair,
-                    },
-                    is_auth_required=False,
-                )
-                subscribe_trades_request: WSJSONRequest = WSJSONRequest(
-                    payload={
-                        "type": CONSTANTS.WS_TYPE_SUBSCRIBE,
-                        "channel": CONSTANTS.WS_CHANNEL_TRADES,
-                        "id": trading_pair,
-                    },
-                    is_auth_required=False,
-                )
-                subscribe_markets_request: WSJSONRequest = WSJSONRequest(
-                    payload={
-                        "type": CONSTANTS.WS_TYPE_SUBSCRIBE,
-                        "channel": CONSTANTS.WS_CHANNEL_MARKETS,
-                        "id": trading_pair,
-                    },
-                    is_auth_required=False,
-                )
-                await ws.send(subscribe_orderbook_request)
-                await ws.send(subscribe_trades_request)
-                await ws.send(subscribe_markets_request)
-            self.logger().info("Subscribed to public orderbook and trade channels...")
-        except asyncio.CancelledError:
-            raise
+            while True:
+                try:
+                    msg: str = await asyncio.wait_for(ws.recv(), timeout=self.MESSAGE_TIMEOUT)
+                    yield msg
+                except asyncio.TimeoutError:
+                    try:
+                        pong_waiter = await ws.ping()
+                        await asyncio.wait_for(pong_waiter, timeout=self.PING_TIMEOUT)
+                    except asyncio.TimeoutError:
+                        raise
+        except asyncio.TimeoutError:
+            self.logger().warning("WebSocket ping timed out. Going to reconnect...")
+            return
+        except ConnectionClosed:
+            return
+        finally:
+            await ws.close()
+
+    @staticmethod
+    @cachetools.func.ttl_cache(ttl=10)
+    def get_mid_price(trading_pair: str) -> Optional[Decimal]:
+        resp = requests.get(url=f"{DYDX_V3_API_URL}{TICKER_URL}/{trading_pair}")
+        record = resp.json()
+        data = record["markets"][trading_pair]
+        mid_price = (Decimal(data['high']) + Decimal(data['low'])) / 2
+
+        return mid_price
+
+    @staticmethod
+    async def fetch_trading_pairs() -> List[str]:
+        try:
+            async with aiohttp.ClientSession() as client:
+                async with client.get(f"{DYDX_V3_API_URL}{MARKETS_URL}", timeout=5) as response:
+                    if response.status == 200:
+                        all_trading_pairs: Dict[str, Any] = await response.json()
+                        valid_trading_pairs: list = []
+                        for key, val in all_trading_pairs["markets"].items():
+                            if val['status'] == "ONLINE":
+                                valid_trading_pairs.append(key)
+                        return valid_trading_pairs
         except Exception:
-            self.logger().exception("Unexpected error occurred subscribing to order book trading and delta streams...")
-            raise
+            # Do nothing if the request fails -- there will be no autocomplete for dydx trading pairs
+            pass
 
-    def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
-        channel = ""
-        if "channel" in event_message:
-            event_channel = event_message["channel"]
-            event_type = event_message["type"]
-            if event_channel == CONSTANTS.WS_CHANNEL_TRADES:
-                channel = self._trade_messages_queue_key
-            elif event_channel == CONSTANTS.WS_CHANNEL_ORDERBOOK:
-                if event_type == CONSTANTS.WS_TYPE_SUBSCRIBED:
-                    channel = self._snapshot_messages_queue_key
-                if event_type == CONSTANTS.WS_TYPE_CHANNEL_DATA:
-                    channel = self._diff_messages_queue_key
-            elif event_channel == CONSTANTS.WS_CHANNEL_MARKETS:
-                channel = self._funding_info_messages_queue_key
-        return channel
+        return []
 
-    async def _make_order_book_message(
-        self,
-        raw_message: Dict[str, Any],
-        message_queue: asyncio.Queue,
-        bids: List[Tuple[float, float]],
-        asks: List[Tuple[float, float]],
-        message_type: OrderBookMessageType,
-    ):
-        symbol = raw_message["id"]
-        trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol)
+    async def listen_for_trades(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
+        while True:
+            try:
+                async with websockets.connect(f"{WS_URL}") as ws:
+                    ws: websockets.WebSocketClientProtocol = ws
+                    for pair in self._trading_pairs:
+                        subscribe_request: Dict[str, Any] = {
+                            "type": "subscribe",
+                            "channel": "v3_trades",
+                            "id": pair
+                        }
+                        await ws.send(ujson.dumps(subscribe_request))
+                    async for raw_msg in self._inner_messages(ws):
+                        msg = ujson.loads(raw_msg)
+                        if "contents" in msg:
+                            if "trades" in msg["contents"]:
+                                if msg["type"] == "channel_data":
+                                    for datum in msg["contents"]["trades"]:
+                                        msg["ts"] = time.time()
+                                        trade_msg: OrderBookMessage = DydxPerpetualOrderBook.trade_message_from_exchange(datum, msg)
+                                        output.put_nowait(trade_msg)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger().error("Unexpected error with WebSocket connection. Retrying after 30 seconds...",
+                                    exc_info=True)
+                await asyncio.sleep(30.0)
 
-        timestamp_s = self._time()
-        update_id = self._nonce_provider.get_tracking_nonce(timestamp=timestamp_s)
+    async def listen_for_order_book_diffs(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
+        while True:
+            try:
+                async with websockets.connect(f"{WS_URL}") as ws:
+                    ws: websockets.WebSocketClientProtocol = ws
+                    for pair in self._trading_pairs:
+                        subscribe_request: Dict[str, Any] = {
+                            "type": "subscribe",
+                            "channel": "v3_orderbook",
+                            "id": pair
+                        }
+                        await ws.send(ujson.dumps(subscribe_request))
+                    async for raw_msg in self._inner_messages(ws):
+                        msg = ujson.loads(raw_msg)
+                        if "contents" in msg:
+                            msg["trading_pair"] = msg["id"]
+                            if msg["type"] == "channel_data":
+                                ts = time.time()
+                                order_msg: OrderBookMessage = DydxPerpetualOrderBook.diff_message_from_exchange(msg["contents"], ts, msg)
+                                output.put_nowait(order_msg)
+                            elif msg["type"] == "subscribed":
+                                msg["rest"] = False
+                                ts = time.time()
+                                order_msg: OrderBookMessage = DydxPerpetualOrderBook.snapshot_message_from_exchange(msg["contents"], ts, msg)
+                                output.put_nowait(order_msg)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger().error("Unexpected error with WebSocket connection. Retrying after 30 seconds...",
+                                    exc_info=True)
+                await asyncio.sleep(30.0)
 
-        order_book_message_content = {
-            "trading_pair": trading_pair,
-            "update_id": update_id,
-            "bids": bids,
-            "asks": asks,
-        }
-        message = OrderBookMessage(
-            message_type=message_type,
-            content=order_book_message_content,
-            timestamp=timestamp_s,
-        )
-        message_queue.put_nowait(message)
-
-    async def _parse_order_book_snapshot_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
-        if raw_message["type"] in ["subscribed", "channel_data"]:
-            bids, asks = self._get_bids_and_asks_from_snapshot(raw_message["contents"])
-            await self._make_order_book_message(
-                raw_message=raw_message,
-                message_queue=message_queue,
-                bids=bids,
-                asks=asks,
-                message_type=OrderBookMessageType.SNAPSHOT,
-            )
-
-    async def _parse_order_book_diff_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
-        if raw_message["type"] in ["subscribed", "channel_data"]:
-            bids, asks = self._get_bids_and_asks_from_diff(raw_message["contents"])
-            await self._make_order_book_message(
-                raw_message=raw_message,
-                message_queue=message_queue,
-                bids=bids,
-                asks=asks,
-                message_type=OrderBookMessageType.DIFF,
-            )
-
-    async def _parse_trade_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
-        if raw_message["type"] == "channel_data":
-            symbol = raw_message["id"]
-            trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol)
-
-            trade_updates = raw_message["contents"]["trades"]
-
-            for trade_data in trade_updates:
-                ts_ms = dp.parse(trade_data["createdAt"]).timestamp() * 1e3
-                trade_type = float(TradeType.BUY.value) if trade_data["side"] == "BUY" else float(TradeType.SELL.value)
-                message_content = {
-                    "trade_id": ts_ms,
-                    "trading_pair": trading_pair,
-                    "trade_type": trade_type,
-                    "amount": trade_data["size"],
-                    "price": trade_data["price"],
-                }
-                trade_message = OrderBookMessage(
-                    message_type=OrderBookMessageType.TRADE,
-                    content=message_content,
-                    timestamp=ts_ms * 1e-3,
-                )
-                message_queue.put_nowait(trade_message)
-
-    async def _parse_funding_info_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
-        if raw_message["type"] == "channel_data":
-            for trading_pair in raw_message["contents"].keys():
-                if trading_pair in self._trading_pairs:
-                    market_info = raw_message["contents"][trading_pair]
-
-                    if any(
-                        info in ["indexPrice", "oraclePrice", "nextFundingRate", "nextFundingAt"]
-                        for info in market_info.keys()
-                    ):
-
-                        info_update = FundingInfoUpdate(trading_pair)
-
-                        if "indexPrice" in market_info.keys():
-                            info_update.index_price = Decimal(market_info["indexPrice"])
-                        if "oraclePrice" in market_info.keys():
-                            info_update.mark_price = Decimal(market_info["oraclePrice"])
-                        if "nextFundingRate" in market_info.keys():
-                            info_update.rate = Decimal(market_info["nextFundingRate"])
-                        if "nextFundingAt" in market_info.keys():
-                            info_update.next_funding_utc_timestamp = dp.parse(market_info["nextFundingAt"]).timestamp()
-
-                        message_queue.put_nowait(info_update)
-
-    async def _request_complete_funding_info(self, trading_pair: str) -> Dict[str, Any]:
-        params = {
-            "symbol": await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
-        }
-
-        rest_assistant = await self._api_factory.get_rest_assistant()
-        endpoint = CONSTANTS.PATH_MARKETS
-        url = web_utils.public_rest_url(path_url=endpoint)
-        data = await rest_assistant.execute_request(
-            url=url,
-            throttler_limit_id=endpoint,
-            params=params,
-            method=RESTMethod.GET,
-        )
-        return data
-
-    async def _order_book_snapshot(self, trading_pair: str) -> OrderBookMessage:
-        snapshot_response = await self._request_order_book_snapshot(trading_pair)
-
-        timestamp = self._time()
-        update_id = self._nonce_provider.get_tracking_nonce(timestamp=timestamp)
-
-        bids, asks = self._get_bids_and_asks_from_snapshot(snapshot_response)
-        order_book_message_content = {
-            "trading_pair": trading_pair,
-            "update_id": update_id,
-            "bids": bids,
-            "asks": asks,
-        }
-        snapshot_msg: OrderBookMessage = OrderBookMessage(
-            message_type=OrderBookMessageType.SNAPSHOT,
-            content=order_book_message_content,
-            timestamp=timestamp,
-        )
-
-        return snapshot_msg
-
-    async def _request_order_book_snapshot(self, trading_pair: str) -> Dict[str, Any]:
-        rest_assistant = await self._api_factory.get_rest_assistant()
-        endpoint = CONSTANTS.PATH_SNAPSHOT
-        url = web_utils.public_rest_url(path_url=endpoint + "/" + trading_pair)
-        data = await rest_assistant.execute_request(
-            url=url,
-            throttler_limit_id=endpoint,
-            method=RESTMethod.GET,
-        )
-
-        return data
-
-    @staticmethod
-    def _get_bids_and_asks_from_snapshot(
-        snapshot: Dict[str, List[Dict[str, Union[str, int, float]]]]
-    ) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
-
-        bids = [(Decimal(bid["price"]), Decimal(bid["size"])) for bid in snapshot["bids"]]
-        asks = [(Decimal(ask["price"]), Decimal(ask["size"])) for ask in snapshot["asks"]]
-
-        return bids, asks
-
-    @staticmethod
-    def _get_bids_and_asks_from_diff(
-        diff: Dict[str, List[Dict[str, Union[str, int, float]]]]
-    ) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
-
-        bids = [(Decimal(bid[0]), Decimal(bid[1])) for bid in diff["bids"]]
-        asks = [(Decimal(ask[0]), Decimal(ask[1])) for ask in diff["asks"]]
-
-        return bids, asks
-
-    async def _connected_websocket_assistant(self) -> WSAssistant:
-        ws: WSAssistant = await self._api_factory.get_ws_assistant()
-        await ws.connect(ws_url=CONSTANTS.DYDX_WS_URL, ping_timeout=CONSTANTS.HEARTBEAT_INTERVAL)
-        return ws
-
-    async def _request_order_book_snapshots(self, output: asyncio.Queue):
-        pass  # unused
+    async def listen_for_order_book_snapshots(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
+        pass

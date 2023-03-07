@@ -1,40 +1,31 @@
-from decimal import Decimal
-
-from hummingbot.client.config.config_validators import validate_decimal, validate_market_trading_pair
 from hummingbot.client.config.config_var import ConfigVar
+from hummingbot.client.config.config_validators import (
+    validate_market_trading_pair,
+    validate_decimal,
+)
 from hummingbot.client.settings import (
-    AllConnectorSettings,
-    ConnectorType,
     required_exchanges,
     requried_connector_trading_pairs,
+    EXAMPLE_PAIRS,
 )
-
-
-def exchange_on_validated(value: str):
-    required_exchanges.add(value)
-
-
-def validate_connector(value: str):
-    connector = AllConnectorSettings.get_connector_settings().get(value, None)
-    if not connector or connector.type != ConnectorType.EVM_AMM_LP:
-        return "Only EVM_AMM_LP connectors allowed."
+from decimal import Decimal
 
 
 def market_validator(value: str) -> None:
-    connector = uniswap_v3_lp_config_map.get("connector").value
-    return validate_market_trading_pair(connector, value)
+    exchange = "uniswap_v3"
+    return validate_market_trading_pair(exchange, value)
 
 
 def market_on_validated(value: str) -> None:
-    connector = uniswap_v3_lp_config_map.get("connector").value
-    requried_connector_trading_pairs[connector] = [value]
+    required_exchanges.append(value)
+    requried_connector_trading_pairs["uniswap_v3"] = [value]
 
 
 def market_prompt() -> str:
-    connector = uniswap_v3_lp_config_map.get("connector").value
-    example = AllConnectorSettings.get_example_pairs().get(connector)
-    return "Enter the trading pair you would like to provide liquidity on {}>>> ".format(
-        f"(e.g. {example}) " if example else "")
+    connector = "uniswap_v3"
+    example = EXAMPLE_PAIRS.get(connector)
+    return "Enter the pair you would like to provide liquidity to {}>>> ".format(
+        f" (e.g. {example}) " if example else "")
 
 
 uniswap_v3_lp_config_map = {
@@ -42,12 +33,6 @@ uniswap_v3_lp_config_map = {
         key="strategy",
         prompt="",
         default="uniswap_v3_lp"),
-    "connector": ConfigVar(
-        key="connector",
-        prompt="Enter name of LP connector >>> ",
-        validator=validate_connector,
-        on_validated=exchange_on_validated,
-        prompt_on_new=True),
     "market": ConfigVar(
         key="market",
         prompt=market_prompt,
@@ -56,32 +41,35 @@ uniswap_v3_lp_config_map = {
         on_validated=market_on_validated),
     "fee_tier": ConfigVar(
         key="fee_tier",
-        prompt="On which fee tier do you want to provide liquidity on? (LOWEST/LOW/MEDIUM/HIGH) ",
-        validator=lambda s: None if s in {"LOWEST",
-                                          "LOW",
+        prompt="On which fee tier do you want to provide liquidity on? (LOW/MEDIUM/HIGH) ",
+        validator=lambda s: None if s in {"LOW",
                                           "MEDIUM",
                                           "HIGH",
                                           } else
         "Invalid fee tier.",
         prompt_on_new=True),
-    "price_spread": ConfigVar(
-        key="price_spread",
-        prompt="How wide around current pool price and/or last created positions do you want new positions to span? (Enter 1 to indicate 1%)  >>> ",
+    "buy_position_price_spread": ConfigVar(
+        key="buy_position_price_spread",
+        prompt="How wide apart(in percentage) do you want the lower price to be from the upper price for buy position?(Enter 1 to indicate 1%)  >>> ",
         type_str="decimal",
-        validator=lambda v: validate_decimal(v, Decimal("0"), inclusive=False),
-        default=Decimal("1"),
+        validator=lambda v: validate_decimal(v, Decimal("0")),
         prompt_on_new=True),
-    "amount": ConfigVar(
-        key="amount",
-        prompt="Enter the maximum value(in terms of base asset) to use for providing liquidity. >>>",
+    "sell_position_price_spread": ConfigVar(
+        key="sell_position_price_spread",
+        prompt="How wide apart(in percentage) do you want the lower price to be from the upper price for sell position? (Enter 1 to indicate 1%) >>> ",
+        type_str="decimal",
+        validator=lambda v: validate_decimal(v, Decimal("0")),
+        prompt_on_new=True),
+    "base_token_amount": ConfigVar(
+        key="base_token_amount",
+        prompt="How much of your base token do you want to use? >>>",
         prompt_on_new=True,
-        validator=lambda v: validate_decimal(v, Decimal("0"), inclusive=False),
+        validator=lambda v: validate_decimal(v, Decimal("0")),
         type_str="decimal"),
-    "min_profitability": ConfigVar(
-        key="min_profitability",
-        prompt="What is the minimum unclaimed fees an out of range position must have before it is closed? (in terms of base asset) >>>",
-        prompt_on_new=False,
-        validator=lambda v: validate_decimal(v, Decimal("0"), inclusive=False),
-        default=Decimal("1"),
+    "quote_token_amount": ConfigVar(
+        key="quote_token_amount",
+        prompt="How much of your quote token do you want to use? >>>",
+        prompt_on_new=True,
+        validator=lambda v: validate_decimal(v, Decimal("0")),
         type_str="decimal"),
 }
