@@ -31,7 +31,7 @@ cdef class VitexOrderBook(OrderBook):
                                        timestamp: float,
                                        metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
-            msg.update(smetadata)
+            msg.update(metadata)
         msg_ts = int(timestamp * 1e-3)
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
             "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["trading_pair"]),
