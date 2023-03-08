@@ -16,7 +16,7 @@ from hummingbot.core.data_type.order_book_message import (
 _bob_logger = None
 
 
-class VitexOrderBook(OrderBook):
+cdef class VitexOrderBook(OrderBook):
     @classmethod
     def logger(cls) -> HummingbotLogger:
         global _bob_logger
@@ -74,7 +74,7 @@ class VitexOrderBook(OrderBook):
         }, timestamp or msg_ts)
 
     @classmethod
-    def from_snapshot(cls, msg: OrderBookMessage) -> OrderBook:
+    def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
         result = VitexOrderBook()
         result.apply_snapshot(msg.bids, msg.asks, msg.update_id)
         return result
