@@ -27,8 +27,9 @@ from hummingbot.connector.connector_status import get_connector_status, warning_
 from hummingbot.client.config.config_var import ConfigVar
 from hummingbot.client.command.rate_command import RateCommand
 from hummingbot.client.config.config_validators import validate_bool
-from hummingbot.client.errors import OracleRateUnavailable
 from hummingbot.core.rate_oracle.rate_oracle import RateOracle
+from hummingbot.exceptions import OracleRateUnavailable
+
 if TYPE_CHECKING:
     from hummingbot.client.hummingbot_application import HummingbotApplication
 
@@ -51,7 +52,7 @@ class StartCommand:
               log_level: Optional[str] = None,
               restore: Optional[bool] = False):
         if threading.current_thread() != threading.main_thread():
-            self.ev_loop.call_soon_threadsafe(self.start, log_level)
+            self.ev_loop.call_soon_threadsafe(self.start, log_level, restore)
             return
         safe_ensure_future(self.start_check(log_level, restore), loop=self.ev_loop)
 
@@ -70,6 +71,7 @@ class StartCommand:
                 RateOracle.get_instance().start()
         is_valid = await self.status_check_all(notify_success=False)
         if not is_valid:
+            self._notify("Status checks failed. Start aborted.")
             return
         if self._last_started_strategy_file != self.strategy_file_name:
             init_logging("hummingbot_logs.yml",
@@ -85,8 +87,8 @@ class StartCommand:
         self._initialize_notifiers()
 
         self._notify(f"\nStatus check complete. Starting '{self.strategy_name}' strategy...")
-        if global_config_map.get("paper_trade_enabled").value:
-            self._notify("\nPaper Trading ON: All orders are simulated, and no real orders are placed.")
+        if any([str(exchange).endswith("paper_trade") for exchange in settings.required_exchanges]):
+            self._notify("\nPaper Trading Active: All orders are simulated, and no real orders are placed.")
 
         for exchange in settings.required_exchanges:
             connector = str(exchange)
@@ -118,8 +120,6 @@ class StartCommand:
             config_path: str = self.strategy_file_name
             self.start_time = time.time() * 1e3  # Time in milliseconds
             self.clock = Clock(ClockMode.REALTIME)
-            if self.wallet is not None:
-                self.clock.add_iterator(self.wallet)
             for market in self.markets.values():
                 if market is not None:
                     self.clock.add_iterator(market)
