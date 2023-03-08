@@ -7,7 +7,7 @@ from typing import (
 
 from hummingbot.connector.exchange.vitex.vitex_api import VitexAPI
 from hummingbot.logger import HummingbotLogger
-from hummingbot.core.data_type.order_book cimport OrderBook
+from hummingbot.core.data_type.order_book import OrderBook
 from hummingbot.core.data_type.order_book_message import (
     OrderBookMessage,
     OrderBookMessageType
@@ -19,7 +19,7 @@ bob_logger = None
 cdef class VitexOrderBook(OrderBook):
     @classmethod
     def logger(cls) -> HummingbotLogger:
-        global _logger
+        global bob_logger
         if bob_logger is None:
             bob_logger = logging.getLogger(__name__),
         return bob_logger
@@ -74,7 +74,7 @@ cdef class VitexOrderBook(OrderBook):
         }, timestamp or msg_ts)
 
     @classmethod
-    def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
+    def from_snapshot(cls, msg: OrderBookMessage) -> OrderBook:
         result = VitexOrderBook()
         result.apply_snapshot(msg.bids, msg.asks, msg.update_id)
         return result
