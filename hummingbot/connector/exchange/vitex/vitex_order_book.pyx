@@ -7,7 +7,7 @@ from typing import (
 
 from hummingbot.connector.exchange.vitex.vitex_api import VitexAPI
 from hummingbot.logger import HummingbotLogger
-from hummingbot.core.data_type.order_book import OrderBook
+from hummingbot.core.data_type.order_book cimport OrderBook
 from hummingbot.core.data_type.order_book_message import (
     OrderBookMessage,
     OrderBookMessageType
@@ -16,7 +16,7 @@ from hummingbot.core.data_type.order_book_message import (
 _logger = None
 
 
-class VitexOrderBook(OrderBook):
+cdef class VitexOrderBook(OrderBook):
     @classmethod
     def logger(cls) -> HummingbotLogger:
         global _logger
