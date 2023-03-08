@@ -250,37 +250,37 @@ create_command_timeout: 10
 other_commands_timeout: 30
 
 # Background color of the top pane
-top-pane: "000000"
+top-pane: "#000000"
 
 # Background color of the bottom pane
-bottom-pane: "000000"
+bottom-pane: "#000000"
 
 # Background color of the output pane
-output-pane: "262626"
+output-pane: "#262626"
 
 # Background color of the input pane
-input-pane: "1C1C1C"
+input-pane: "#1C1C1C"
 
 # Background color of the logs pane
-logs-pane: "121212"
+logs-pane: "#121212"
 
 # Terminal primary color
-terminal-primary: "5FFFD7"
+terminal-primary: "#5FFFD7"
 
 # Primary label color
-primary-label: "5FFFD7"
+primary-label: "#5FFFD7"
 
 # Secondary label color
-secondary-label: "FFFFFF"
+secondary-label: "#FFFFFF"
 
 # Success label color
-success-label: "5FFFD7"
+success-label: "#5FFFD7"
 
 # Warning label color
-warning-label: "FFFF00"
+warning-label: "#FFFF00"
 
 # Info label color
-info-label: "5FD7FF"
+info-label: "#5FD7FF"
 
 # Error label color
-error-label: "FF0000"
+error-label: "#FF0000"
