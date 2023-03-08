@@ -7,7 +7,7 @@ from typing import (
 
 from hummingbot.connector.exchange.vitex.vitex_api import VitexAPI
 from hummingbot.logger import HummingbotLogger
-from hummingbot.core.data_type.order_book import OrderBook
+from hummingbot.core.data_type.order_book cimport OrderBook
 from hummingbot.core.data_type.order_book_message import (
     OrderBookMessage,
     OrderBookMessageType
@@ -46,7 +46,7 @@ cdef class VitexOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
         # TODO: ViteX Websocket API does not support incremental depth messages, use snapshot message instead
-        message_type = OrderBookMessageType.SNAPSHOT
+        message_type = OrderBookMessageType.DIFF
 
         return OrderBookMessage(message_type, {
             "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["topic"].split(".")[1]),
