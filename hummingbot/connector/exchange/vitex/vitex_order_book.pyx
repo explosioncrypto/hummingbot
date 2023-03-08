@@ -13,16 +13,16 @@ from hummingbot.core.data_type.order_book_message import (
     OrderBookMessageType
 )
 
-bob_logger = None
+_bob_logger = None
 
 
 cdef class VitexOrderBook(OrderBook):
     @classmethod
     def logger(cls) -> HummingbotLogger:
-        global bob_logger
-        if bob_logger is None:
-            bob_logger = logging.getLogger(__name__),
-        return bob_logger
+        global _bob_logger
+        if _bob_logger is None:
+            _bob_logger = logging.getLogger(__name__),
+        return _bob_logger
 
     @classmethod
     def snapshot_message_from_exchange(cls,
