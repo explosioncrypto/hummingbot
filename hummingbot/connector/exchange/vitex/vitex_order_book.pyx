@@ -46,7 +46,7 @@ cdef class VitexOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
         # TODO: ViteX Websocket API does not support incremental depth messages, use snapshot message instead
-        message_type = OrderBookMessageType.DIFF
+        message_type = OrderBookMessageType.SNAPSHOT
 
         return OrderBookMessage(message_type, {
             "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["topic"].split(".")[1]),
