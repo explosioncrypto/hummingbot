@@ -24,7 +24,7 @@ class VitexAPIError(IOError):
 
 
 class VitexAPI:
-    def __init__(self, vitex_auth: VitexAuth = None):
+    def __init__(self, vitex_auth: VitexAuth=None):
         self._auth = vitex_auth
         self._shared_client = None
 
