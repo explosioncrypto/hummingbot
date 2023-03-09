@@ -41,7 +41,7 @@ connector_status = {
     'uniswap': 'yellow',
     'uniswap_v3': 'yellow',
     'wazirx': 'yellow',
-    'vitex': 'yellow'
+    'vitex': 'green'
 }
 
 warning_messages = {
