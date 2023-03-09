@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 import logging
 from typing import (
     Dict,
@@ -38,29 +38,30 @@ class VitexOrderBook(OrderBook):
             "bids": msg["bids"],
             "asks": msg["asks"]
         }
-        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, content, timestamp or msg_ts)
+        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, content, msg_ts)
 
     @classmethod
     def diff_message_from_exchange(cls,
-                                   msg: Dict[str, any],
-                                   timestamp: float=None,
+                                   data: Dict[str, any],
+                                   timestamp: float,
                                    metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
-            msg.update(metadata)
-        # TODO: ViteX Websocket API does not support incremental depth messages, use snapshot message instead
-        message_type = OrderBookMessageType.SNAPSHOT
+            data.update(metadata)
 
-        return OrderBookMessage(message_type, {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["topic"].split(".")[1]),
-            "update_id": msg["timestamp"],
-            "bids": msg["data"]["bids"],
-            "asks": msg["data"]["asks"]
-        }, timestamp=timestamp)
+        msg_ts = int(timestamp * 1e-3)
+        content = {
+            "trading_pair": data["trading_pair"],
+            "update_id": msg_ts,
+            "bids": data.get("bids", []),
+            "asks": data.get("asks", [])
+        }
+        return OrderBookMessage(OrderBookMessageType.DIFF, content, msg_ts)
 
     @classmethod
     def trade_message_from_exchange(cls,
                                     msg: Dict[str, any],
-                                    metadata: Optional[Dict]=None):
+                                    timestamp: float,
+                                    metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         msg_ts = int(timestamp * 1e-3)
@@ -72,7 +73,7 @@ class VitexOrderBook(OrderBook):
             "amount": msg["q"],
             "price": msg["p"]
         }
-        return OrderBookMessage(OrderBookMessageType.TRADE, content, timestamp or msg_ts)
+        return OrderBookMessage(OrderBookMessageType.TRADE, content, msg_ts)
 
     @classmethod
     def from_snapshot(cls, msg: OrderBookMessage) -> OrderBook:
