@@ -5,6 +5,7 @@ from typing import (
     Optional
 )
 
+from hummingbot.core.event.events import TradeType
 from hummingbot.connector.exchange.vitex.vitex_api import VitexAPI
 from hummingbot.logger import HummingbotLogger
 from hummingbot.core.data_type.order_book import OrderBook
@@ -30,17 +31,19 @@ class VitexOrderBook(OrderBook):
                                        metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["trading_pair"]),
-            "update_id": msg["timestamp"],
+        msg_ts = int(timestamp * 1e-3)
+        content = {
+            "trading_pair": msg["trading_pair"],
+            "update_id": msg_ts,
             "bids": msg["bids"],
             "asks": msg["asks"]
-        }, timestamp=timestamp)
+        }
+        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, content, timestamp or msg_ts)
 
     @classmethod
     def diff_message_from_exchange(cls,
                                    msg: Dict[str, any],
-                                   timestamp: Optional[float]=None,
+                                   timestamp: float=None,
                                    metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
@@ -60,19 +63,19 @@ class VitexOrderBook(OrderBook):
                                     metadata: Optional[Dict]=None):
         if metadata:
             msg.update(metadata)
-        ts = msg["timestamp"]
-        data = msg["data"][0]
-        return OrderBookMessage(OrderBookMessageType.TRADE, {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(data["s"]),
-            "trade_type": VitexAPI.convert_trade_type(data["side"]),
-            "trade_id": data["id"],
-            "update_id": ts,
-            "price": data["p"],
-            "amount": data["q"]
-        }, timestamp=ts * 1e-3)
+        msg_ts = int(timestamp * 1e-3)
+        content = {
+            "trading_pair": msg["trading_pair"],
+            "trade_type": float(TradeType.SELL.value) if msg["T"] == 2 else float(TradeType.BUY.value),
+            "trade_id": msg["t"],
+            "update_id": msg["t"],
+            "amount": msg["q"],
+            "price": msg["p"]
+        }
+        return OrderBookMessage(OrderBookMessageType.TRADE, content, timestamp or msg_ts)
 
     @classmethod
     def from_snapshot(cls, msg: OrderBookMessage) -> OrderBook:
-        result = VitexOrderBook()
-        result.apply_snapshot(msg.bids, msg.asks, msg.update_id)
-        return result
+        retval = VitexOrderBook()
+        retval.apply_snapshot(msg.bids, msg.asks, msg.update_id)
+        return retval
