@@ -22,7 +22,7 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
                  trade_type: TradeType,
                  price: Decimal,
                  amount: Decimal,
-                 initial_state: str = "Unknown"):
+                 initial_state: str="New"):
         super().__init__(
             client_order_id,
             exchange_order_id,
@@ -48,11 +48,12 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
     def is_cancelled(self) -> bool:
         return self.last_state in {"Cancelled"}
 
+    @property
+    def is_open(self) -> bool:
+        return self.last_state in {"New", "PartiallyFilled"}
+
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> InFlightOrderBase:
-        """
-            Deserialize from saved data
-        """
         cdef:
             VitexInFlightOrder order = VitexInFlightOrder(
                 client_order_id=data["client_order_id"],
@@ -68,6 +69,7 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         order.executed_amount_quote = Decimal(data["executed_amount_quote"])
         order.fee_asset = data["fee_asset"]
         order.fee_paid = Decimal(data["fee_paid"])
+        order.last_state = data["last_state"]
         return order
 
     @classmethod

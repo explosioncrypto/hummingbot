@@ -472,7 +472,7 @@ cdef class VitexExchange(ExchangeBase):
                                       exc_info=True,
                                       app_warning_msg="Could not fetch account updates from ViteX. "
                                                       "Check API key and network connection.")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(5.0)
 
     async def _trading_rules_polling_loop(self):
         while True:

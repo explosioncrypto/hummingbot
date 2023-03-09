@@ -27,8 +27,8 @@ class VitexUserStreamTracker(UserStreamTracker):
 
     def __init__(
         self,
-        vite_address: Optional[str] = None,
-        trading_pairs: Optional[List[str]] = [],
+        vite_address: Optional[str]=None,
+        trading_pairs: Optional[List[str]]=[],
     ):
         super().__init__()
         self._vite_address: str = vite_address

@@ -62,10 +62,7 @@ class VitexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             "limit": limit,
             "symbol": symbol
         } if limit != 0 \
-            else {
-            "symbol": symbol
-        }
-
+            else {"symbol": symbol}
         result = await self._vitex_api.api_request("GET", "/depth", params)
         return result
 
