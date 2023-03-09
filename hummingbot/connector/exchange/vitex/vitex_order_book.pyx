@@ -50,7 +50,7 @@ cdef class VitexOrderBook(OrderBook):
             msg.update(metadata)
         ts = metadata["ts"]
         data = msg["data"][0]
-        return OrderBookMessage(OrderBookMessageType.TRADE, msg, timestamp)
+        return OrderBookMessage(OrderBookMessageType.TRADE, msg, ts)
 
     @classmethod
     def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
