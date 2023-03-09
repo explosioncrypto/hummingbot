@@ -28,7 +28,7 @@ cdef class VitexOrderBook(OrderBook):
     def snapshot_message_from_exchange(cls,
                                        msg: Dict[str, any],
                                        timestamp: float,
-                                       metadata: Optional[Dict] = None) -> OrderBookMessage:
+                                       metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
@@ -41,12 +41,12 @@ cdef class VitexOrderBook(OrderBook):
     @classmethod
     def diff_message_from_exchange(cls,
                                    msg: Dict[str, any],
-                                   timestamp: Optional[float] = None,
-                                   metadata: Optional[Dict] = None) -> OrderBookMessage:
+                                   timestamp: Optional[float]=None,
+                                   metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         # TODO: ViteX Websocket API does not support incremental depth messages, use snapshot message instead
-        message_type = OrderBookMessageType.DIFF
+        message_type = OrderBookMessageType.SNAPSHOT
 
         return OrderBookMessage(message_type, {
             "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["topic"].split(".")[1]),
@@ -56,11 +56,13 @@ cdef class VitexOrderBook(OrderBook):
         }, timestamp=timestamp)
 
     @classmethod
-    def trade_message_from_exchange(cls, msg: Dict[str, any], metadata: Optional[Dict] = None):
+    def trade_message_from_exchange(cls,
+                                    msg: Dict[str, any],
+                                    metadata: Optional[Dict]=None):
         if metadata:
             msg.update(metadata)
         ts = msg["timestamp"]
-        data = msg["data"][1]
+        data = msg["data"][0]
         return OrderBookMessage(OrderBookMessageType.TRADE, {
             "trading_pair": VitexAPI.convert_from_exchange_trading_pair(data["s"]),
             "trade_type": VitexAPI.convert_trade_type(data["side"]),
