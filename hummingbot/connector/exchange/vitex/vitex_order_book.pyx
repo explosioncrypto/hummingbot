@@ -52,7 +52,7 @@ cdef class VitexOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
         return OrderBookMessage(OrderBookMessageType.DIFF, {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["trading_pair"]),
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["topic"].split(".")[1]),
             "update_id": msg["timestamp"],
             "bids": msg["data"]["bids"],
             "asks": msg["data"]["asks"]
@@ -69,7 +69,7 @@ cdef class VitexOrderBook(OrderBook):
             msg.update(metadata)
         ts = msg['timestamp']
         return OrderBookMessage(OrderBookMessageType.TRADE, {
-            'trading_pair': VitexAPI.convert_from_exchange_trading_pair(msg["trading_pair"]),
+            'trading_pair': VitexAPI.convert_from_exchange_trading_pair(data["s"]),
             'trade_type': float(TradeType.SELL.value) if msg['side'] == 'SELL' else float(TradeType.BUY.value),
             'price': Decimal(str(msg['price'])),
             'update_id': ts,
