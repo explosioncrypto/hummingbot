@@ -25,53 +25,57 @@ cdef class VitexOrderBook(OrderBook):
         return _bob_logger
 
     @classmethod
-    def snapshot_message_from_exchange(cls,
-                                       msg: Dict[str, any],
-                                       timestamp: float,
-                                       metadata: Optional[Dict] = None) -> OrderBookMessage:
+    def snapshot_message_from_exchange(
+        cls,
+        msg: Dict[str, any],
+        timestamp: float,
+        metadata: Optional[Dict]=None
+    ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["trading_pair"]),
-            "update_id": msg["timestamp"],
-            "bids": msg["bids"],
-            "asks": msg["asks"]
-        }, timestamp=timestamp)
+        return VitexOrderBookMessage(
+            message_type=OrderBookMessageType.SNAPSHOT,
+            content=msg,
+            timestamp=timestamp
+        )
 
     @classmethod
-    def diff_message_from_exchange(cls,
-                                   msg: Dict[str, any],
-                                   timestamp: Optional[float] = None,
-                                   metadata: Optional[Dict] = None) -> OrderBookMessage:
+    def diff_message_from_exchange(
+        cls,
+        msg: Dict[str, any],
+        timestamp: Optional[float]=None,
+        metadata: Optional[Dict]=None
+    ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        # TODO: ViteX Websocket API does not support incremental depth messages, use snapshot message instead
-        message_type = OrderBookMessageType.SNAPSHOT
-
-        return OrderBookMessage(message_type, {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["topic"].split(".")[1]),
-            "update_id": msg["timestamp"],
-            "bids": msg["data"]["bids"],
-            "asks": msg["data"]["asks"]
-        }, timestamp=timestamp)
+        return VitexOrderBookMessage(
+            message_type=OrderBookMessageType.DIFF,
+            content=msg,
+            timestamp=timestamp
+        )
 
     @classmethod
-    def trade_message_from_exchange(cls, msg: Dict[str, any], metadata: Optional[Dict] = None):
+    def trade_message_from_exchange(
+        cls,
+        msg: Dict[str, Any],
+        timestamp: Optional[float]=None,
+        metadata: Optional[Dict]=None
+    ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        ts = msg["timestamp"]
-        data = msg["data"][0]
+        ts = msg['timestamp']
         return OrderBookMessage(OrderBookMessageType.TRADE, {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(data["s"]),
-            "trade_type": VitexAPI.convert_trade_type(data["side"]),
-            "trade_id": data["id"],
-            "update_id": ts,
-            "price": data["p"],
-            "amount": data["q"]
+            'trading_pair': symbol_to_trading_pair(msg['symbol']),
+            'trade_type': float(TradeType.SELL.value) if msg['side'] == 'SELL' else float(TradeType.BUY.value),
+            'price': Decimal(str(msg['price'])),
+            'update_id': ts,
+            'amount': msg['size']
         }, timestamp=ts * 1e-3)
 
     @classmethod
-    def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
-        result = VitexOrderBook()
-        result.apply_snapshot(msg.bids, msg.asks, msg.update_id)
-        return result
+    def from_snapshot(cls, snapshot: OrderBookMessage):
+        raise NotImplementedError('Vitex order book needs to retain individual order data.')
+
+    @classmethod
+    def restore_from_snapshot_and_diffs(self, snapshot: OrderBookMessage, diffs: List[OrderBookMessage]):
+        raise NotImplementedError('Vitex order book needs to retain individual order data.')
