@@ -388,6 +388,7 @@ cdef class VitexExchange(ExchangeBase):
                     )
                     continue
 
+                updated_order = VitexInFlightOrder.update_with_order_update(order_data)
                 tracked_order.last_state = updated_order.last_state
                 execute_amount_diff = updated_order.executed_amount_base - tracked_order.executed_amount_base
 
