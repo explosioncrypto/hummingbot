@@ -8,7 +8,7 @@ from hummingbot.core.event.events import (
     OrderType,
     TradeType
 )
-from hummingbot.connector.in_flight_order_base import InFlightOrderBase
+from hummingbot.connector.in_flight_order_base cimport InFlightOrderBase
 from hummingbot.connector.exchange.vitex.vitex_api import VitexAPI
 
 s_decimal_0 = Decimal(0)
@@ -53,7 +53,7 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         """
             Deserialize from saved data
         """
-        cdef:
+        def:
             VitexInFlightOrder order = VitexInFlightOrder(
                 client_order_id=data["client_order_id"],
                 exchange_order_id=data["exchange_order_id"],
@@ -75,11 +75,11 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         """
             Deserialize from API order data
         """
-        cdef:
+        def:
             VitexInFlightOrder order = VitexInFlightOrder(
                 client_order_id=None,
                 exchange_order_id=data["orderId"],
-                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data["trading_pair"]),
+                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data["symbol"]),
                 order_type=VitexAPI.convert_order_type(data["type"]),
                 trade_type=VitexAPI.convert_trade_type(data["side"]),
                 price=Decimal(data["price"]),
