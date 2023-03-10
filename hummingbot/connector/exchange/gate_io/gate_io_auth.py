@@ -1,7 +1,7 @@
-import hashlib
 import hmac
+import hashlib
 import time
-from typing import Any, Dict
+from typing import Dict, Any
 
 from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS
 

@@ -1,12 +1,11 @@
 # distutils: language=c++
 # distutils: sources=hummingbot/core/cpp/OrderBookEntry.cpp
 import logging
+import numpy as np
 from decimal import Decimal
 from typing import Dict
-
-import numpy as np
-from hummingbot.core.data_type.order_book_row import OrderBookRow
 from hummingbot.logger import HummingbotLogger
+from hummingbot.core.data_type.order_book_row import OrderBookRow
 
 _logger = None
 s_empty_diff = np.ndarray(shape=(0, 4), dtype="float64")
@@ -99,8 +98,8 @@ cdef class GateIoActiveOrderTracker:
 
     cdef tuple c_convert_snapshot_message_to_np_arrays(self, object message):
         cdef:
-            object price
-            double amount
+            float price
+            float amount
             str order_id
             dict order_dict
 

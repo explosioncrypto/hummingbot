@@ -9,7 +9,7 @@ from hummingbot.client.config.config_validators import (
 from hummingbot.client.settings import (
     required_exchanges,
     requried_connector_trading_pairs,
-    AllConnectorSettings,
+    EXAMPLE_PAIRS,
 )
 from decimal import Decimal
 
@@ -38,14 +38,14 @@ def perpetual_market_on_validated(value: str) -> None:
 
 def spot_market_prompt() -> str:
     connector = spot_perpetual_arbitrage_config_map.get("spot_connector").value
-    example = AllConnectorSettings.get_example_pairs().get(connector)
+    example = EXAMPLE_PAIRS.get(connector)
     return "Enter the token trading pair you would like to trade on %s%s >>> " \
            % (connector, f" (e.g. {example})" if example else "")
 
 
 def perpetual_market_prompt() -> str:
     connector = spot_perpetual_arbitrage_config_map.get("perpetual_connector").value
-    example = AllConnectorSettings.get_example_pairs().get(connector)
+    example = EXAMPLE_PAIRS.get(connector)
     return "Enter the token trading pair you would like to trade on %s%s >>> " \
            % (connector, f" (e.g. {example})" if example else "")
 

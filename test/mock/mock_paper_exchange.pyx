@@ -8,10 +8,9 @@ from hummingbot.connector.exchange.paper_trade.trading_pair import TradingPair
 from hummingbot.core.data_type.order_book import OrderBookRow
 from hummingbot.core.data_type.composite_order_book cimport CompositeOrderBook
 from hummingbot.core.clock cimport Clock
-from hummingbot.core.data_type.order_book_tracker import OrderBookTracker
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.connector.exchange.paper_trade.market_config import MarketConfig
-from hummingbot.client.settings import AllConnectorSettings, ConnectorSetting, ConnectorType, TradeFeeType
+from hummingbot.client.settings import CONNECTOR_SETTINGS, ConnectorSetting, ConnectorType, TradeFeeType
 from hummingbot.core.event.events import OrderType
 from hummingbot.connector.connector_base cimport ConnectorBase
 from .mock_order_tracker import MockOrderTracker
@@ -22,20 +21,9 @@ cdef class MockPaperExchange(PaperTradeExchange):
 
     def __init__(self, fee_percent: Decimal = Decimal("0")):
         PaperTradeExchange.__init__(self, MockOrderTracker(), MarketConfig.default_config(), MockPaperExchange)
-
-        AllConnectorSettings.get_connector_settings()[self.name] = ConnectorSetting(self.name,
-                                                                                    ConnectorType.Exchange,
-                                                                                    "",
-                                                                                    True,
-                                                                                    False,
-                                                                                    TradeFeeType.Percent,
-                                                                                    "",
-                                                                                    [fee_percent, fee_percent],
-                                                                                    None,
-                                                                                    None,
-                                                                                    None,
-                                                                                    None,
-                                                                                    None)
+        CONNECTOR_SETTINGS[self.name] = ConnectorSetting(self.name, ConnectorType.Exchange,
+                                                         "", True, False, TradeFeeType.Percent, "",
+                                                         [fee_percent, fee_percent], None, None, None, None, None)
 
     @property
     def name(self) -> str:

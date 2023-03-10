@@ -8,7 +8,7 @@ from hummingbot.client.config.config_validators import (
 from hummingbot.client.settings import (
     required_exchanges,
     requried_connector_trading_pairs,
-    AllConnectorSettings,
+    EXAMPLE_PAIRS,
 )
 from decimal import Decimal
 
@@ -25,9 +25,9 @@ def market_on_validated(value: str) -> None:
 
 def market_prompt() -> str:
     connector = "uniswap_v3"
-    example = AllConnectorSettings.get_example_pairs().get(connector)
+    example = EXAMPLE_PAIRS.get(connector)
     return "Enter the trading pair you would like to provide liquidity on {}>>> ".format(
-        f"(e.g. {example}) " if example else "")
+        f" (e.g. {example}) " if example else "")
 
 
 uniswap_v3_lp_config_map = {

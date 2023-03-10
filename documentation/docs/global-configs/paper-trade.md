@@ -1,22 +1,24 @@
-This feature allows users to test Hummingbot and simulate trading strategies without risking any actual assets.
+This feature allows users to test Hummingbot and simulate trading strategies without risking any actual assets. Enter the command `paper_trade` to enable this feature.
+
+![papertrade ](/assets/img/paper_trade.gif)
 
 !!! note
-    Exchange APIs are not required to run the bot on paper_trade for Pure Market making, Cross Exchange Market Making and Avellaneda Market Making. `paper_trade` is only allowed on exchanges Binance, Kucoin, AscendEX, and Gate io.
+    Exchange APIs are not required to run the bot on paper_trade for Pure Market making, Cross Market Making and Liquidity Mining strategies.
 
 ## Enabling and Disabling
 
-Paper trading can be enabled when creating a strategy and choosing an exchange when prompted `Enter your maker spot connector` during the creation of the strategy.
+Paper trading mode can be enabled and disabled from the Hummingbot client by doing `paper_trade` or `config paper_trade_enabled`.
 
-![papertrade1](/assets/img/binance_papertrade.png)
+The top bar shows the status to indicate if paper trading mode is on or off.
 
-Alternatively, you can enable paper trading by inputting `config exchange` then choose the exchange that supports paper trade. 
+![papertrade2 ](/assets/img/paper_trade_mode2.png)
 
-![papertrade2](/assets/img/config_exchange.png)
+Also shows a reminder that paper trade was enabled when doing a `status` or `history` command.
 
-To choose a different connector and go live, simply choose the exchange name without the `paper_trade` suffix then do the command `stop` and `start` so the changes will reflect on your configuration.
+![papertrade3 ](/assets/img/paper_trade_warning.png)
 
-![papertrade3](/assets/img/papertrade_binance.png)
-
+!!! tip
+In the event that the bot is running on paper trade and you disable it, you need to `stop` and `start` the bot to apply the changes. Make sure your Exchange APIs are connected as well when going live.
 
 ## Adding Paper Trade Balance
 

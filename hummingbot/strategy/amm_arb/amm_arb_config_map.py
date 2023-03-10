@@ -10,7 +10,7 @@ from hummingbot.client.config.config_validators import (
 from hummingbot.client.settings import (
     required_exchanges,
     requried_connector_trading_pairs,
-    AllConnectorSettings,
+    EXAMPLE_PAIRS,
 )
 from decimal import Decimal
 
@@ -39,14 +39,14 @@ def market_2_on_validated(value: str) -> None:
 
 def market_1_prompt() -> str:
     connector = amm_arb_config_map.get("connector_1").value
-    example = AllConnectorSettings.get_example_pairs().get(connector)
+    example = EXAMPLE_PAIRS.get(connector)
     return "Enter the token trading pair you would like to trade on %s%s >>> " \
            % (connector, f" (e.g. {example})" if example else "")
 
 
 def market_2_prompt() -> str:
     connector = amm_arb_config_map.get("connector_2").value
-    example = AllConnectorSettings.get_example_pairs().get(connector)
+    example = EXAMPLE_PAIRS.get(connector)
     return "Enter the token trading pair you would like to trade on %s%s >>> " \
            % (connector, f" (e.g. {example})" if example else "")
 

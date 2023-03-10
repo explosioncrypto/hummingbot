@@ -1,9 +1,8 @@
-from typing import Dict, List, Optional
+from typing import Optional, Dict, List
 
 from hummingbot.client.config.config_methods import using_exchange
 from hummingbot.client.config.config_var import ConfigVar
 from hummingbot.connector.derivative.bybit_perpetual import bybit_perpetual_constants as CONSTANTS
-from hummingbot.connector.utils import split_hb_trading_pair
 from hummingbot.core.api_throttler.data_types import LinkedLimitWeightPair, RateLimit
 from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
 
@@ -33,15 +32,15 @@ def is_linear_perpetual(trading_pair: str) -> bool:
     """
     Returns True if trading_pair is in USDT(Linear) Perpetual
     """
-    _, quote_asset = split_hb_trading_pair(trading_pair)
+    _, quote_asset = trading_pair.split("-")
     return quote_asset == "USDT"
 
 
 def get_rest_api_market_for_endpoint(trading_pair: Optional[str] = None) -> str:
     if trading_pair and is_linear_perpetual(trading_pair):
-        market = CONSTANTS.LINEAR_MARKET
+        market = "linear"
     else:
-        market = CONSTANTS.NON_LINEAR_MARKET
+        market = "non_linear"
     return market
 
 

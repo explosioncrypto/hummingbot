@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 import asyncio
 import logging
-from typing import Any, AsyncIterable, List, Optional
-
-from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS
-from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
+from typing import (
+    Any,
+    AsyncIterable,
+    List,
+    Optional,
+)
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.logger import HummingbotLogger
-
+from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS
 from .gate_io_auth import GateIoAuth
-from .gate_io_utils import GateIoAPIError, convert_to_exchange_trading_pair
+from .gate_io_utils import (
+    convert_to_exchange_trading_pair,
+    GateIoAPIError,
+)
 from .gate_io_websocket import GateIoWebsocket
 
 
@@ -23,13 +28,7 @@ class GateIoAPIUserStreamDataSource(UserStreamTrackerDataSource):
             cls._logger = logging.getLogger(__name__)
         return cls._logger
 
-    def __init__(
-        self,
-        gate_io_auth: GateIoAuth,
-        trading_pairs: Optional[List[str]] = None,
-        api_factory: Optional[WebAssistantsFactory] = None,
-    ):
-        self._api_factory = api_factory
+    def __init__(self, gate_io_auth: GateIoAuth, trading_pairs: Optional[List[str]] = None):
         self._gate_io_auth: GateIoAuth = gate_io_auth
         self._ws: Optional[GateIoWebsocket] = None
         self._trading_pairs = trading_pairs or []
@@ -50,7 +49,7 @@ class GateIoAPIUserStreamDataSource(UserStreamTrackerDataSource):
         """
 
         try:
-            self._ws = GateIoWebsocket(self._gate_io_auth, self._api_factory)
+            self._ws = GateIoWebsocket(self._gate_io_auth)
 
             await self._ws.connect()
 

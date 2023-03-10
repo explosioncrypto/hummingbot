@@ -10,14 +10,14 @@ from hummingbot.client.config.config_validators import (
 )
 from hummingbot.client.settings import (
     required_exchanges,
-    AllConnectorSettings,
+    EXAMPLE_PAIRS,
 )
 from typing import Optional
 
 
 def maker_trading_pair_prompt():
     exchange = pure_market_making_config_map.get("exchange").value
-    example = AllConnectorSettings.get_example_pairs().get(exchange)
+    example = EXAMPLE_PAIRS.get(exchange)
     return "Enter the token trading pair you would like to trade on %s%s >>> " \
            % (exchange, f" (e.g. {example})" if example else "")
 

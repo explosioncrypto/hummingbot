@@ -4,6 +4,7 @@ from typing import List, Dict
 from dataclasses import dataclass
 from decimal import Decimal
 import logging
+from hummingbot.connector.exchange.binance.binance_utils import convert_from_exchange_trading_pair
 from hummingbot.core.utils.async_utils import safe_gather
 
 PARROT_MINER_BASE_URL = "https://papi.hummingbot.io/v1/mining_data/"
@@ -75,15 +76,20 @@ async def get_active_campaigns(exchange: str, trading_pairs: List[str] = []) -> 
     else:
         for campaign_retval in resp_json:
             for market in campaign_retval["markets"]:
-                if not are_same_entity(exchange, market["exchange_name"]):
+                if market["exchange_name"] != exchange:
                     continue
-                t_pair = f"{market['base_asset']}-{market['quote_asset']}"
+                t_pair = market["trading_pair"]
+                # So far we have only 2 exchanges for mining Binance and Kucoin, Kucoin doesn't require conversion.
+                # In the future we should create a general approach for this, e.g. move all convert trading pair fn to
+                # utils.py and import the function dynamically in hummingbot/client/settings.py
+                if exchange == "binance":
+                    t_pair = convert_from_exchange_trading_pair(t_pair)
                 if trading_pairs and t_pair not in trading_pairs:
                     continue
                 campaign = CampaignSummary()
                 campaign.market_id = int(market["id"])
                 campaign.trading_pair = t_pair
-                campaign.exchange_name = exchange
+                campaign.exchange_name = market["exchange_name"]
                 campaigns[campaign.market_id] = campaign
             for bounty_period in campaign_retval["bounty_periods"]:
                 for payout in bounty_period["payout_parameters"]:
@@ -94,7 +100,3 @@ async def get_active_campaigns(exchange: str, trading_pairs: List[str] = []) -> 
                         campaigns[market_id].spread_max = Decimal(str(payout["spread_max"])) / Decimal("100")
                         campaigns[market_id].payout_asset = payout["payout_asset"]
     return campaigns
-
-
-def are_same_entity(hb_exchange_name: str, parrot_exchange_name: str) -> bool:
-    return hb_exchange_name.replace("_", "") == parrot_exchange_name.replace("_", "")

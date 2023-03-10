@@ -5,32 +5,32 @@ connector_status = {
     'balancer': 'green',
     'beaxy': 'green',
     'binance': 'green',
-    'binance_perpetual': 'yellow',
+    'binance_perpetual': 'green',
     'binance_perpetual_testnet': 'yellow',
     'binance_us': 'green',
     'bitfinex': 'yellow',
     'bitmart': 'green',
     'bittrex': 'yellow',
     'blocktane': 'yellow',
-    'bybit_perpetual': 'yellow',
+    'bybit_perpetual': 'green',
     'bybit_perpetual_testnet': 'yellow',
     'celo': 'yellow',
     'coinbase_pro': 'yellow',
     'coinzoom': 'yellow',
     'crypto_com': 'green',
     'digifinex': "yellow",
-    'dydx_perpetual': 'green',
+    'dydx': 'green',
+    'dydx_perpetual': 'yellow',
     'ethereum': 'red',
     'ftx': 'green',
-    'gate_io': 'green',
+    'gate_io': 'yellow',
     'hitbtc': 'green',
     'huobi': 'green',
-    'kraken': 'yellow',
+    'kraken': 'green',
     'kucoin': 'yellow',
     'k2': 'red',
     'liquid': 'yellow',
     'loopring': 'yellow',
-    'mexc': 'yellow',
     'ndax': 'yellow',
     'ndax_testnet': 'yellow',
     'okex': 'yellow',
@@ -40,7 +40,6 @@ connector_status = {
     'terra': 'green',
     'uniswap': 'yellow',
     'uniswap_v3': 'yellow',
-    'wazirx': 'yellow',
     'vitex': 'green'
 }
 
@@ -59,5 +58,5 @@ def get_connector_status(connector_name: str) -> str:
     if connector_name not in connector_status.keys():
         status = "UNKNOWN"
     else:
-        return f"&c{connector_status[connector_name].upper()}"
+        return connector_status[connector_name].upper()
     return status

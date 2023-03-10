@@ -4,10 +4,9 @@ import path_util        # noqa: F401
 import asyncio
 import errno
 import socket
-
 from typing import (
     List,
-    Coroutine,
+    Coroutine
 )
 
 from hummingbot.client.hummingbot_application import HummingbotApplication
@@ -23,7 +22,6 @@ from hummingbot import (
 )
 from hummingbot.client.ui import login_prompt
 from hummingbot.client.ui.stdout_redirection import patch_stdout
-from hummingbot.client.settings import AllConnectorSettings
 from hummingbot.core.utils.async_utils import safe_gather
 
 
@@ -48,8 +46,6 @@ async def main():
     init_logging("hummingbot_logs.yml")
 
     await read_system_configs_from_yml()
-
-    AllConnectorSettings.initialize_paper_trade_settings(global_config_map.get("paper_trade_exchanges").value)
 
     hb = HummingbotApplication.main_application()
 

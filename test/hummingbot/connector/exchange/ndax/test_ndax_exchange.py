@@ -17,9 +17,7 @@ from hummingbot.connector.exchange.ndax.ndax_in_flight_order import (
 )
 from hummingbot.connector.exchange.ndax.ndax_order_book import NdaxOrderBook
 from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.core.event.event_logger import EventLogger
 from hummingbot.core.event.events import (
-    MarketEvent,
     MarketOrderFailureEvent,
     OrderCancelledEvent,
     OrderFilledEvent,
@@ -62,18 +60,6 @@ class NdaxExchangeTests(TestCase):
         self.exchange.logger().setLevel(1)
         self.exchange.logger().addHandler(self)
         self.exchange._account_id = 1
-
-        self.order_fill_logger: EventLogger = EventLogger()
-        self.cancel_order_logger: EventLogger = EventLogger()
-        self.buy_order_completed_logger: EventLogger = EventLogger()
-        self.sell_order_completed_logger: EventLogger = EventLogger()
-        self.order_failure_logger: EventLogger = EventLogger()
-
-        self.exchange.add_listener(MarketEvent.BuyOrderCompleted, self.buy_order_completed_logger)
-        self.exchange.add_listener(MarketEvent.SellOrderCompleted, self.sell_order_completed_logger)
-        self.exchange.add_listener(MarketEvent.OrderFilled, self.order_fill_logger)
-        self.exchange.add_listener(MarketEvent.OrderCancelled, self.cancel_order_logger)
-        self.exchange.add_listener(MarketEvent.OrderFailure, self.order_failure_logger)
 
         self.mocking_assistant = NetworkMockingAssistant()
         self.mock_done_event = asyncio.Event()
@@ -284,8 +270,8 @@ class NdaxExchangeTests(TestCase):
         self.assertTrue(inflight_order.is_cancelled)
         self.assertFalse(inflight_order.client_order_id in self.exchange.in_flight_orders)
         self.assertTrue(self._is_logged("INFO", f"Successfully cancelled order {inflight_order.client_order_id}"))
-        self.assertEqual(1, len(self.cancel_order_logger.event_log))
-        cancel_event = self.cancel_order_logger.event_log[0]
+        self.assertEqual(1, len(self.exchange.event_logs))
+        cancel_event = self.exchange.event_logs[0]
         self.assertEqual(OrderCancelledEvent, type(cancel_event))
         self.assertEqual(inflight_order.client_order_id, cancel_event.order_id)
 
@@ -335,8 +321,8 @@ class NdaxExchangeTests(TestCase):
                                         f"The market order {inflight_order.client_order_id} "
                                         f"has failed according to order status event. "
                                         f"Reason: {payload['ChangeReason']}"))
-        self.assertEqual(1, len(self.order_failure_logger.event_log))
-        failure_event = self.order_failure_logger.event_log[0]
+        self.assertEqual(1, len(self.exchange.event_logs))
+        failure_event = self.exchange.event_logs[0]
         self.assertEqual(MarketOrderFailureEvent, type(failure_event))
         self.assertEqual(inflight_order.client_order_id, failure_event.order_id)
 
@@ -389,8 +375,8 @@ class NdaxExchangeTests(TestCase):
         self.assertTrue(self._is_logged("INFO", f"The {inflight_order.trade_type.name} order "
                                                 f"{inflight_order.client_order_id} has completed "
                                                 f"according to order status API"))
-        self.assertEqual(1, len(self.order_fill_logger.event_log))
-        fill_event = self.order_fill_logger.event_log[0]
+        self.assertEqual(2, len(self.exchange.event_logs))
+        fill_event = self.exchange.event_logs[0]
         self.assertEqual(OrderFilledEvent, type(fill_event))
         self.assertEqual(inflight_order.client_order_id, fill_event.order_id)
         self.assertEqual(inflight_order.trading_pair, fill_event.trading_pair)
@@ -401,8 +387,7 @@ class NdaxExchangeTests(TestCase):
         self.assertEqual(Decimal("0.002"), fill_event.trade_fee.percent)
         self.assertEqual(0, len(fill_event.trade_fee.flat_fees))
         self.assertEqual("213", fill_event.exchange_trade_id)
-        self.assertEqual(1, len(self.buy_order_completed_logger.event_log))
-        buy_event = self.buy_order_completed_logger.event_log[0]
+        buy_event = self.exchange.event_logs[1]
         self.assertEqual(inflight_order.client_order_id, buy_event.order_id)
         self.assertEqual(inflight_order.base_asset, buy_event.base_asset)
         self.assertEqual(inflight_order.quote_asset, buy_event.quote_asset)
@@ -463,8 +448,8 @@ class NdaxExchangeTests(TestCase):
         self.assertTrue(self._is_logged("INFO", f"The {inflight_order.trade_type.name} order "
                                                 f"{inflight_order.client_order_id} has completed "
                                                 f"according to order status API"))
-        self.assertEqual(1, len(self.order_fill_logger.event_log))
-        fill_event = self.order_fill_logger.event_log[0]
+        self.assertEqual(2, len(self.exchange.event_logs))
+        fill_event = self.exchange.event_logs[0]
         self.assertEqual(OrderFilledEvent, type(fill_event))
         self.assertEqual(inflight_order.client_order_id, fill_event.order_id)
         self.assertEqual(inflight_order.trading_pair, fill_event.trading_pair)
@@ -475,8 +460,7 @@ class NdaxExchangeTests(TestCase):
         self.assertEqual(Decimal("0.002"), fill_event.trade_fee.percent)
         self.assertEqual(0, len(fill_event.trade_fee.flat_fees))
         self.assertEqual("213", fill_event.exchange_trade_id)
-        self.assertEqual(1, len(self.sell_order_completed_logger.event_log))
-        buy_event = self.sell_order_completed_logger.event_log[0]
+        buy_event = self.exchange.event_logs[1]
         self.assertEqual(inflight_order.client_order_id, buy_event.order_id)
         self.assertEqual(inflight_order.base_asset, buy_event.base_asset)
         self.assertEqual(inflight_order.quote_asset, buy_event.quote_asset)

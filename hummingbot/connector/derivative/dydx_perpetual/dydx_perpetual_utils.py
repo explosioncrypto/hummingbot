@@ -1,6 +1,5 @@
 from hummingbot.client.config.config_var import ConfigVar
 from hummingbot.client.config.config_methods import using_exchange
-from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
 
 CENTRALIZED = True
@@ -10,11 +9,6 @@ EXAMPLE_PAIR = "BTC-USD"
 
 
 DEFAULT_FEES = [0.05, 0.2]
-
-
-def build_api_factory() -> WebAssistantsFactory:
-    api_factory = WebAssistantsFactory()
-    return api_factory
 
 
 KEYS = {
