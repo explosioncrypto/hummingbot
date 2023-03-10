@@ -3,8 +3,13 @@ import logging
 from decimal import Decimal
 from typing import (
     Dict,
-    Optional
+    List,
+    Optional,
 )
+from sqlalchemy.engine import RowProxy
+import ujson
+from datetime import datetime
+from aiokafka import ConsumerRecord
 
 from hummingbot.core.event.events import TradeType
 from hummingbot.connector.exchange.vitex.vitex_api import VitexAPI
@@ -68,14 +73,38 @@ cdef class VitexOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
         ts = msg['timestamp']
+        data = msg["data"][0]
         return OrderBookMessage(OrderBookMessageType.TRADE, {
-            'trading_pair': VitexAPI.convert_from_exchange_trading_pair(msg["trading_pair"]),
+            'trading_pair': VitexAPI.convert_from_exchange_trading_pair(data["s"]),
             'trade_type': float(TradeType.SELL.value) if msg['side'] == 'SELL' else float(TradeType.BUY.value),
-            'price': Decimal(str(msg['price'])),
+            "trade_id": msg["uuid"],
             'update_id': ts,
+            'price': Decimal(str(msg['price'])),
             'amount': msg['size']
         }, timestamp=ts * 1e-3)
 
+    @classmethod
+    def snapshot_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None) -> OrderBookMessage:
+        msg = record.json if type(record.json) == dict else ujson.loads(record.json)
+        return DydxOrderBookMessage(OrderBookMessageType.SNAPSHOT, msg, timestamp=record.timestamp * 1e-3)
+
+    @classmethod
+    def diff_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None) -> OrderBookMessage:
+        return DydxOrderBookMessage(OrderBookMessageType.DIFF, record.json)
+
+    @classmethod
+    def snapshot_message_from_kafka(cls, record: ConsumerRecord, metadata: Optional[Dict] = None) -> OrderBookMessage:
+        msg = ujson.loads(record.value.decode())
+        return DydxOrderBookMessage(OrderBookMessageType.SNAPSHOT, msg, timestamp=record.timestamp * 1e-3)
+
+    @classmethod
+    def diff_message_from_kafka(cls, record: ConsumerRecord, metadata: Optional[Dict] = None) -> OrderBookMessage:
+        msg = ujson.loads(record.value.decode())
+        return DydxOrderBookMessage(OrderBookMessageType.DIFF, msg)
+
+    @classmethod
+    def trade_receive_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None):
+        return DydxOrderBookMessage(OrderBookMessageType.TRADE, record.json)
     @classmethod
     def from_snapshot(cls, snapshot: OrderBookMessage):
         raise NotImplementedError('Vitex order book needs to retain individual order data.')
