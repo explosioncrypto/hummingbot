@@ -76,11 +76,11 @@ cdef class VitexOrderBook(OrderBook):
         data = msg["data"][0]
         return OrderBookMessage(OrderBookMessageType.TRADE, {
             'trading_pair': VitexAPI.convert_from_exchange_trading_pair(data["s"]),
-            'trade_type': float(TradeType.SELL.value) if msg['side'] == 'SELL' else float(TradeType.BUY.value),
-            "trade_id": msg["uuid"],
-            'update_id': ts,
-            'price': Decimal(str(msg['price'])),
-            'amount': msg['size']
+            "trade_type": VitexAPI.convert_trade_type(data["side"]),
+            "trade_id": data["id"],
+            "update_id": ts,
+            "price": data["p"],
+            "amount": data["q"]
         }, timestamp=ts * 1e-3)
 
     @classmethod
@@ -105,6 +105,7 @@ cdef class VitexOrderBook(OrderBook):
     @classmethod
     def trade_receive_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None):
         return OrderBookMessage(OrderBookMessageType.TRADE, record.json)
+
     @classmethod
     def from_snapshot(cls, snapshot: OrderBookMessage):
         raise NotImplementedError('Vitex order book needs to retain individual order data.')
