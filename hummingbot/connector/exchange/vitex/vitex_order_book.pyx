@@ -31,30 +31,32 @@ cdef class VitexOrderBook(OrderBook):
         cls,
         msg: Dict[str, any],
         timestamp: float,
-        metadata: Optional[Dict]=None -> OrderBookMessage:
+        metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        return OrderBookMessage(
-            message_type=OrderBookMessageType.SNAPSHOT,
-            content=msg,
-            timestamp=timestamp
-        )
+        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["symbol"]),
+            "update_id": msg["timestamp"],
+            "bids": msg["bids"],
+            "asks": msg["asks"]
+        }, timestamp=timestamp)
 
     @classmethod
     def diff_message_from_exchange(
         cls,
         msg: Dict[str, any],
         timestamp: Optional[float]=None,
-        metadata: Optional[Dict]=None -> OrderBookMessage:
+        metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        return OrderBookMessage(
-            message_type=OrderBookMessageType.DIFF,
-            content=msg,
-            timestamp=timestamp
-        )
+        return OrderBookMessage(OrderBookMessageType.DIFF, {
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["symbol"]),
+            "update_id": msg["timestamp"],
+            "bids": msg["data"]["bids"],
+            "asks": msg["data"]["asks"]
+        }, timestamp=timestamp)
 
     @classmethod
     def trade_message_from_exchange(
