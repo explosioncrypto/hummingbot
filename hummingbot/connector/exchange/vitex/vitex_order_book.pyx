@@ -31,7 +31,7 @@ cdef class VitexOrderBook(OrderBook):
         cls,
         msg: Dict[str, any],
         timestamp: float,
-        metadata: Optional[Dict]=None
+        metadata: Optional[Dict]=None -> OrderBookMessage:
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
@@ -46,7 +46,7 @@ cdef class VitexOrderBook(OrderBook):
         cls,
         msg: Dict[str, any],
         timestamp: Optional[float]=None,
-        metadata: Optional[Dict]=None
+        metadata: Optional[Dict]=None -> OrderBookMessage:
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
