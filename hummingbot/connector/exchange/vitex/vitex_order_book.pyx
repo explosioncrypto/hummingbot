@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import logging
+from decimal import Decimal
 from typing import (
     Dict,
     Optional
@@ -66,7 +67,7 @@ cdef class VitexOrderBook(OrderBook):
             msg.update(metadata)
         ts = msg['timestamp']
         return OrderBookMessage(OrderBookMessageType.TRADE, {
-            'trading_pair': Vitex.convert_from_exchange_trading_pair(msg['symbol']),
+            'trading_pair': VitexAPI.convert_from_exchange_trading_pair(msg['symbol']),
             'trade_type': float(TradeType.SELL.value) if msg['side'] == 'SELL' else float(TradeType.BUY.value),
             'price': Decimal(str(msg['price'])),
             'update_id': ts,
