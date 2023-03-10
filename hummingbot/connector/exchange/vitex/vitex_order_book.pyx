@@ -33,7 +33,7 @@ cdef class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        return VitexOrderBookMessage(
+        return OrderBookMessage(
             message_type=OrderBookMessageType.SNAPSHOT,
             content=msg,
             timestamp=timestamp
@@ -48,7 +48,7 @@ cdef class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        return VitexOrderBookMessage(
+        return OrderBookMessage(
             message_type=OrderBookMessageType.DIFF,
             content=msg,
             timestamp=timestamp
