@@ -28,7 +28,7 @@ cdef class VitexOrderBook(OrderBook):
     def snapshot_message_from_exchange(cls,
                                        msg: Dict[str, any],
                                        timestamp: float,
-                                       metadata: Optional[Dict =None) -> OrderBookMessage:
+                                       metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
@@ -57,9 +57,9 @@ cdef class VitexOrderBook(OrderBook):
 
     @classmethod
     def trade_message_from_exchange(cls,
-                                        msg: Dict[str, any],
-                                        timestamp: Optional[float]=None,
-                                        metadata: Optional[Dict]=None):
+                                    msg: Dict[str, any],
+                                    timestamp: Optional[float]=None,
+                                    metadata: Optional[Dict]=None):
         if metadata:
             msg.update(metadata)
         ts = msg["timestamp"]

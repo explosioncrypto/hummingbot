@@ -56,27 +56,23 @@ class VitexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             results[trading_pair] = float(resp_record["closePrice"])
         return results
 
-    async def get_snapshot(self, trading_pair: str, limit: int = 1000) -> Dict[str, Any]:
+    async def get_snapshot(self, trading_pair: str, limit: int=1000) -> Dict[str, Any]:
         symbol = VitexAPI.convert_to_exchange_trading_pair(trading_pair)
         params: Dict = {
             "limit": limit,
             "symbol": symbol
         } if limit != 0 \
-            else {
-            "symbol": symbol
-        }
-
+            else {"symbol": symbol}
         result = await self._vitex_api.api_request("GET", "/depth", params)
         return result
 
     async def get_new_order_book(self, trading_pair: str) -> OrderBook:
-        snapshot: Dict[str, Any] = await self.get_snapshot(trading_pair, 1000)
+        snapshot: Dict[str, Any] = await self.get_snapshot(trading_pair, 200)
         snapshot_timestamp: float = time.time()
         snapshot_msg: OrderBookMessage = VitexOrderBook.snapshot_message_from_exchange(
             snapshot,
             snapshot_timestamp,
-            metadata={"trading_pair": trading_pair}
-        )
+            metadata={"trading_pair": trading_pair})
         order_book = self.order_book_create_function()
         order_book.apply_snapshot(snapshot_msg.bids, snapshot_msg.asks, snapshot_msg.update_id)
         return order_book
@@ -132,8 +128,7 @@ class VitexAPIOrderBookDataSource(OrderBookTrackerDataSource):
                     # Subscribe topics
                     subscribe_request: Dict[str, Any] = {
                         "command": "sub",
-                        "params": topics
-                    }
+                        "params": topics}
                     await ws.send(ujson.dumps(subscribe_request))
                     # Receive and parse messages
                     async for msg in self._inner_messages(ws):
