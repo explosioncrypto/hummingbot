@@ -86,25 +86,25 @@ cdef class VitexOrderBook(OrderBook):
     @classmethod
     def snapshot_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None) -> OrderBookMessage:
         msg = record.json if type(record.json) == dict else ujson.loads(record.json)
-        return DydxOrderBookMessage(OrderBookMessageType.SNAPSHOT, msg, timestamp=record.timestamp * 1e-3)
+        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, msg, timestamp=record.timestamp * 1e-3)
 
     @classmethod
     def diff_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None) -> OrderBookMessage:
-        return DydxOrderBookMessage(OrderBookMessageType.DIFF, record.json)
+        return OrderBookMessage(OrderBookMessageType.DIFF, record.json)
 
     @classmethod
     def snapshot_message_from_kafka(cls, record: ConsumerRecord, metadata: Optional[Dict] = None) -> OrderBookMessage:
         msg = ujson.loads(record.value.decode())
-        return DydxOrderBookMessage(OrderBookMessageType.SNAPSHOT, msg, timestamp=record.timestamp * 1e-3)
+        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, msg, timestamp=record.timestamp * 1e-3)
 
     @classmethod
     def diff_message_from_kafka(cls, record: ConsumerRecord, metadata: Optional[Dict] = None) -> OrderBookMessage:
         msg = ujson.loads(record.value.decode())
-        return DydxOrderBookMessage(OrderBookMessageType.DIFF, msg)
+        return OrderBookMessage(OrderBookMessageType.DIFF, msg)
 
     @classmethod
     def trade_receive_message_from_db(cls, record: RowProxy, metadata: Optional[Dict] = None):
-        return DydxOrderBookMessage(OrderBookMessageType.TRADE, record.json)
+        return OrderBookMessage(OrderBookMessageType.TRADE, record.json)
     @classmethod
     def from_snapshot(cls, snapshot: OrderBookMessage):
         raise NotImplementedError('Vitex order book needs to retain individual order data.')
