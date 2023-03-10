@@ -13,7 +13,7 @@ API_REST_ENDPOINT = "https://api.vitex.net/api/v2"
 API_CALL_TIMEOUT = 10
 
 VITEX_ORDER_TYPE = ["LIMIT", "MARKET"]
-VITEX_ORDER_STATE = ["New", "PendingRequest", "Received", "Open", "Filled", "PartiallyFilled", "PendingCancel",
+VITEX_ORDER_STATE = ["Unknown", "PendingRequest", "Received", "Open", "Filled", "PartiallyFilled", "PendingCancel",
                      "Cancelled", "PartiallyCancelled", "Failed", "Expired"]
 
 
@@ -24,7 +24,7 @@ class VitexAPIError(IOError):
 
 
 class VitexAPI:
-    def __init__(self, vitex_auth: VitexAuth=None):
+    def __init__(self, vitex_auth: VitexAuth = None):
         self._auth = vitex_auth
         self._shared_client = None
 
@@ -84,7 +84,7 @@ class VitexAPI:
     @staticmethod
     async def api_get(
             path: str,
-            params: Optional[Dict[str, Any]]=None) -> Dict[str, Any]:
+            params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         full_url = f"{API_REST_ENDPOINT}{path}"
 
         # Format params
