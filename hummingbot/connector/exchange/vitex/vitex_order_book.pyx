@@ -28,7 +28,7 @@ cdef class VitexOrderBook(OrderBook):
     def snapshot_message_from_exchange(cls,
                                        msg: Dict[str, any],
                                        timestamp: float,
-                                       metadata: Optional[Dict] = None) -> OrderBookMessage:
+                                       metadata: Optional[Dict =None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
@@ -41,8 +41,8 @@ cdef class VitexOrderBook(OrderBook):
     @classmethod
     def diff_message_from_exchange(cls,
                                    msg: Dict[str, any],
-                                   timestamp: Optional[float] = None,
-                                   metadata: Optional[Dict] = None) -> OrderBookMessage:
+                                   timestamp: Optional[float]=None,
+                                   metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         # TODO: ViteX Websocket API does not support incremental depth messages, use snapshot message instead
@@ -56,7 +56,10 @@ cdef class VitexOrderBook(OrderBook):
         }, timestamp=timestamp)
 
     @classmethod
-    def trade_message_from_exchange(cls, msg: Dict[str, any], metadata: Optional[Dict] = None):
+    def trade_message_from_exchange(cls,
+                                        msg: Dict[str, any],
+                                        timestamp: Optional[float]=None,
+                                        metadata: Optional[Dict]=None):
         if metadata:
             msg.update(metadata)
         ts = msg["timestamp"]
@@ -68,7 +71,7 @@ cdef class VitexOrderBook(OrderBook):
             "update_id": ts,
             "price": data["p"],
             "amount": data["q"]
-        }, timestamp=ts * 1e-3)
+        }, timestamp=ts * 1e-3 or timestamp)
 
     @classmethod
     def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
