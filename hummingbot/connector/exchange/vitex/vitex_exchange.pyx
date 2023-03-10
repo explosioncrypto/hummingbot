@@ -88,7 +88,7 @@ cdef class VitexExchange(ExchangeBase):
                  vitex_vite_address: str,
                  vitex_api_key: str,
                  vitex_secret_key: str,
-                 poll_interval: float = 5.0,
+                 poll_interval: float = 10.0,
                  trading_pairs: Optional[List[str]] = None,
                  trading_required: bool = True):
 
@@ -388,7 +388,7 @@ cdef class VitexExchange(ExchangeBase):
                     )
                     continue
 
-                updated_order = VitexInFlightOrder.update_with_order_update(order_data)
+                #updated_order = VitexInFlightOrder.update_with_order_update(order_data)
                 tracked_order.last_state = updated_order.last_state
                 execute_amount_diff = updated_order.executed_amount_base - tracked_order.executed_amount_base
 
