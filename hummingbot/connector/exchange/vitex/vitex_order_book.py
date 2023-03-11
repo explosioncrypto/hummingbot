@@ -26,13 +26,15 @@ class VitexOrderBook(OrderBook):
     def snapshot_message_from_exchange(cls,
                                        msg: Dict[str, Any],
                                        trading_pair: str,
-                                       timestamp: Optional[float] = None,
-                                       metadata: Optional[Dict] = None) -> OrderBookMessage:
+                                       timestamp: Optional[float]=None,
+                                       metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         msg_ts = int(timestamp * 1e-3)
-        bids = [[float(bid["price"]), float(bid["quantity"])] for bid in msg["bids"]]
-        asks = [[float(ask["price"]), float(ask["quantity"])] for ask in msg["asks"]]
+        bids = [[float(bid["price"]),
+                float(bid["quantity"])] for bid in msg["bids"]]
+        asks = [[float(ask["price"]),
+                float(ask["quantity"])] for ask in msg["asks"]]
         content = {
             "trading_pair": trading_pair,
             "update_id": msg_ts,
@@ -44,14 +46,16 @@ class VitexOrderBook(OrderBook):
     @classmethod
     def trade_message_from_exchange(cls,
                                     msg: Dict[str, Any],
-                                    timestamp: Optional[float] = None,
-                                    metadata: Optional[Dict] = None) -> OrderBookMessage:
+                                    timestamp: Optional[float]=None,
+                                    metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         msg_ts = int(timestamp * 1e-3)
+        data = msg["data"][0]
         content = {
-            "trading_pair": msg["trading_pair"],
-            "trade_type": float(TradeType.SELL.value) if msg["side"] == "SELL" else float(TradeType.BUY.value),
+            "trading_pair": data.get("s"),
+            "trade_type": float(TradeType.SELL.value) if msg["side"] == "SELL"
+            else float(TradeType.BUY.value),
             "trade_id": msg["trade_id"],
             "update_id": msg["trade_time"],
             "amount": float(msg["quantity"]),
