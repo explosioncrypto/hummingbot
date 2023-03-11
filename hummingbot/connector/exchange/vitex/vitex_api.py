@@ -9,7 +9,7 @@ from hummingbot.core.event.events import (
     TradeType
 )
 
-API_REST_ENDPOINT = "https://api.vitex.net/"
+API_REST_ENDPOINT = "https://api.vitex.net/api/v2"
 API_CALL_TIMEOUT = 10
 
 VITEX_ORDER_TYPE = ["LIMIT", "MARKET"]
