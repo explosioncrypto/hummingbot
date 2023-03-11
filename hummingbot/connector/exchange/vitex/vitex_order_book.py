@@ -6,7 +6,6 @@ from typing import (
     Optional,
 )
 
-from hummingbot.core.event.events import TradeType
 from hummingbot.logger import HummingbotLogger
 from hummingbot.core.data_type.order_book import OrderBook
 from hummingbot.core.data_type.order_book_message import (
@@ -46,19 +45,20 @@ class VitexOrderBook(OrderBook):
 
     @classmethod
     def trade_message_from_exchange(cls,
-                                    msg: Dict[str, Any],
+                                    data: Dict[str, Any],
                                     timestamp: Optional[float]=None,
                                     metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
-            msg.update(metadata)
+            data.update(metadata)
+
         msg_ts = int(timestamp * 1e-3)
         content = {
-            "trading_pair": msg["trading_pair"],
-            "trade_type": float(TradeType.SELL.value) if msg["T"] == 2 else float(TradeType.BUY.value),
-            "trade_id": msg["t"],
-            "update_id": msg["t"],
-            "amount": msg["q"],
-            "price": msg["p"]
+            "trading_pair": data.get("s"),
+            "trade_type": data.get("side"),
+            "trade_id": data.get("id"),
+            "update_id": msg_ts,
+            "amount": data.get("q"),
+            "price": data.get("p")
         }
         return OrderBookMessage(OrderBookMessageType.TRADE,
                                 content,
@@ -79,12 +79,12 @@ class VitexOrderBook(OrderBook):
             "bids": data.get("bids", []),
             "asks": data.get("asks", [])
         }
-        return OrderBookMessage(OrderBookMessageType.DIFF,
+        return OrderBookMessage(OrderBookMessageType.SNAPSHOT,
                                 content,
                                 timestamp or msg_ts)
 
     @classmethod
     def from_snapshot(cls, msg: OrderBookMessage) -> OrderBook:
-        retval = VitexOrderBook()
-        retval.apply_snapshot(msg.bids, msg.asks, msg.update_id)
-        return retval
+        result = VitexOrderBook()
+        result.apply_snapshot(msg.bids, msg.asks, msg.update_id)
+        return result
