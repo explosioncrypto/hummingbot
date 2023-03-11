@@ -56,7 +56,7 @@ class VitexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             results[trading_pair] = float(resp_record["closePrice"])
         return results
 
-    async def get_snapshot(self, trading_pair: str, limit: int=20) -> Dict[str, Any]:
+    async def get_snapshot(self, trading_pair: str, limit: int=100) -> Dict[str, Any]:
         symbol = VitexAPI.convert_to_exchange_trading_pair(trading_pair)
         params: Dict = {
             "limit": limit,
@@ -67,7 +67,7 @@ class VitexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         return result
 
     async def get_new_order_book(self, trading_pair: str) -> OrderBook:
-        snapshot: Dict[str, Any] = await self.get_snapshot(trading_pair, 20)
+        snapshot: Dict[str, Any] = await self.get_snapshot(trading_pair, 50)
         snapshot_timestamp: float = time.time()
         snapshot_msg: OrderBookMessage = VitexOrderBook.snapshot_message_from_exchange(
             snapshot,

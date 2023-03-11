@@ -88,7 +88,7 @@ cdef class VitexExchange(ExchangeBase):
                  vitex_vite_address: str,
                  vitex_api_key: str,
                  vitex_secret_key: str,
-                 poll_interval: float=75.0,
+                 poll_interval: float=10.0,
                  trading_pairs: Optional[List[str]]=None,
                  trading_required: bool=True):
 

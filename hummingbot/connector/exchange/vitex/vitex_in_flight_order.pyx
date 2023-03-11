@@ -22,7 +22,7 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
                  trade_type: TradeType,
                  price: Decimal,
                  amount: Decimal,
-                 initial_state: str = "Unknown"):
+                 initial_state: str="Unknown"):
         super().__init__(
             client_order_id,
             exchange_order_id,
