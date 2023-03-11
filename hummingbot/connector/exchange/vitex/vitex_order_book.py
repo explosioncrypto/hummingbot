@@ -74,12 +74,12 @@ class VitexOrderBook(OrderBook):
 
         msg_ts = int(timestamp * 1e-3)
         content = {
-            "trading_pair": data["trading_pair"],
+            "trading_pair": data["topic"],
             "update_id": msg_ts,
             "bids": data.get("bids", []),
             "asks": data.get("asks", [])
         }
-        return OrderBookMessage(OrderBookMessageType.SNAPSHOT,
+        return OrderBookMessage(OrderBookMessageType.DIFF,
                                 content,
                                 timestamp or msg_ts)
 
