@@ -73,7 +73,7 @@ class VitexOrderBookTracker(OrderBookTracker):
 
                 # Log some statistics.
                 now: float = time.time()
-                if int(now / 60.0) > int(last_message_timestamp / 600.0):
+                if int(now / 600.0) > int(last_message_timestamp / 600.0):
                     self.logger().debug("Diff messages processed: %d, rejected: %d, queued: %d",
                                         messages_accepted,
                                         messages_rejected,
@@ -122,7 +122,7 @@ class VitexOrderBookTracker(OrderBookTracker):
 
                     # Output some statistics periodically.
                     now: float = time.time()
-                    if int(now / 60.0) > int(last_message_timestamp / 600.0):
+                    if int(now / 600.0) > int(last_message_timestamp / 600.0):
                         self.logger().debug("Processed %d order book diffs for %s.",
                                             diff_messages_accepted, trading_pair)
                         diff_messages_accepted = 0
