@@ -26,18 +26,18 @@ class VitexOrderBook(OrderBook):
 
     @classmethod
     def snapshot_message_from_exchange(cls,
-                                       msg: Dict[str, Any],
+                                       data: Dict[str, Any],
                                        trading_pair: str,
                                        timestamp: Optional[float]=None,
                                        metadata: Optional[Dict]=None) -> OrderBookMessage:
         if metadata:
-            msg.update(metadata)
+            data.update(metadata)
         msg_ts = int(timestamp * 1e-3)
         content = {
-            "trading_pair": trading_pair,
+            "trading_pair": data["trading_pair"],
             "update_id": msg_ts,
-            "bids": msg["bids"],
-            "asks": msg["asks"]
+            "bids": data.get("bids", []),
+            "asks": data.get("asks", [])
         }
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT,
                                 content,
@@ -74,7 +74,7 @@ class VitexOrderBook(OrderBook):
 
         msg_ts = int(timestamp * 1e-3)
         content = {
-            "trading_pair": data["topic"],
+            "trading_pair": data["trading_pair"],
             "update_id": msg_ts,
             "bids": data.get("bids", []),
             "asks": data.get("asks", [])
