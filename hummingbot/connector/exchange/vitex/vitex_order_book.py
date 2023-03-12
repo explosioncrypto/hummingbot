@@ -91,7 +91,7 @@ class VitexOrderBook(OrderBook):
             "asks": asks
         }
         return OrderBookMessage(
-            OrderBookMessageType.DIFF,
+            OrderBookMessageType.SNAPSHOT,
             content,
             timestamp=timestamp
         )
