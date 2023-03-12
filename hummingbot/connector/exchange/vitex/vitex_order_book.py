@@ -60,7 +60,7 @@ class VitexOrderBook(OrderBook):
             "trade_type": TradeType.SELL if data["side"] == "1"
             else TradeType.BUY,
             "trade_id": data["id"],
-            "update_id": msg["t"],
+            "update_id": data["t"],
             "price": data["p"],
             "amount": data["a"]
         }
