@@ -29,7 +29,7 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        data = msg["data"]
+        data = msg["data"][0]
         bids = [[float(bid["price"]), float(bid["quantity"])]
                 for bid in data.get(["bids"])]
         asks = [[float(ask["price"]), float(ask["quantity"])]
@@ -80,7 +80,7 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        data = msg["data"]
+        data = msg["data"][0]
         bids = [[float(bid["price"]), float(bid["quantity"])]
                 for bid in data.get("bids", [])]
         asks = [[float(ask["price"]), float(ask["quantity"])]
