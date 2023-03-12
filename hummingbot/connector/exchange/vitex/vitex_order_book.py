@@ -67,15 +67,13 @@ class VitexOrderBook(OrderBook):
     def diff_message_from_exchange(
         cls,
         msg: Dict[str, Any],
-        data: Dict[str, Any],
         timestamp: Optional[float]=None,
         metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-            data.update(metadata)
         content = {
-            "trading_pair": msg["symobol"],
+            "trading_pair": msg["symbol"],
             "update_id": msg["timestamp"],
             "bids": msg["data":"bids"],
             "asks": msg["data":"asks"]
@@ -87,7 +85,7 @@ class VitexOrderBook(OrderBook):
         )
 
     @classmethod
-    def from_snapshot(cls, msg: OrderBookMessage) -> OrderBook:
+    def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
         retval = VitexOrderBook()
         retval.apply_snapshot(msg.bids, msg.asks, msg.update_id)
         return retval
