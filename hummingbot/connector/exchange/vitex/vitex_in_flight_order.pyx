@@ -38,11 +38,15 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
 
     @property
     def is_done(self) -> bool:
-        return self.last_state in {"Filled", "PendingCancel", "Cancelled", "PartiallyCancelled", "Failed", "Expired"}
+        return self.last_state in
+        {"Filled", "PendingCancel", "Cancelled",
+         "PartiallyCancelled", "Failed", "Expired"}
 
     @property
     def is_failure(self) -> bool:
-        return self.last_state in {"PendingCancel", "Cancelled", "PartiallyCancelled", "Failed", "Expired"}
+        return self.last_state in
+        {"PendingCancel", "Cancelled",
+         "PartiallyCancelled", "Failed", "Expired"}
 
     @property
     def is_cancelled(self) -> bool:
@@ -71,7 +75,8 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         return order
 
     @classmethod
-    def update_with_order_update(cls, data: Dict[str, Any]) -> VitexInFlightOrder:
+    def update_with_order_update(cls, data: Dict[str, Any]) ->
+    VitexInFlightOrder:
         """
             Deserialize from API order data
         """
@@ -79,7 +84,8 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
             VitexInFlightOrder order = VitexInFlightOrder(
                 client_order_id=None,
                 exchange_order_id=data["orderId"],
-                trading_pair=data["symbol"],
+                trading_pair=
+                VitexAPI.convert_from_exchange_trading_pair(data["s"]),
                 order_type=VitexAPI.convert_order_type(data["type"]),
                 trade_type=VitexAPI.convert_trade_type(data["side"]),
                 price=Decimal(data["price"]),
@@ -89,7 +95,8 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         order.executed_amount_base = Decimal(data["executedQuantity"])
         order.executed_amount_quote = Decimal(data["executedAmount"])
         # ViteX charges quote asset as trading fees
-        order.fee_asset = VitexAPI.convert_from_exchange_symbol(data["quoteTokenSymbol"])
+        order.fee_asset =
+        VitexAPI.convert_from_exchange_symbol(data["quoteTokenSymbol"])
         order.fee_paid = Decimal(data["fee"])
         order.execute_price = Decimal(data["executedAvgPrice"])
         order.last_state = VitexAPI.convert_order_state(data["status"])
