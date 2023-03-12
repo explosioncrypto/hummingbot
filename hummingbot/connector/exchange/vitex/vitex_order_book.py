@@ -45,24 +45,24 @@ class VitexOrderBook(OrderBook):
     def trade_message_from_exchange(
         cls,
         msg: Dict[str, any],
+        timestamp: Optional[float]=None,
         metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        ts = msg["t"]
         content = {
             "trading_pair": msg["s"],
             "trade_type": TradeType.SELL if msg["side"] == "1"
             else TradeType.BUY,
-            "trade_id": ts,
-            "update_id": ts,
+            "trade_id": msg["id"],
+            "update_id": msg["t"],
             "amount": msg["a"],
             "price": msg["p"]
         }
         return OrderBookMessage(
             OrderBookMessageType.TRADE,
             content,
-            timestamp=ts * 1e-3
+            timestamp=timestamp
         )
 
     @classmethod
