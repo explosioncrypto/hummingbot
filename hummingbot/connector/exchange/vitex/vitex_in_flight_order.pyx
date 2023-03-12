@@ -78,12 +78,12 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         cdef:
             VitexInFlightOrder order = VitexInFlightOrder(
                 client_order_id=None,
-                exchange_order_id=data["orderId"],
-                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data["symbol"]),
+                exchange_order_id=data["oid"],
+                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data["s"]),
                 order_type=VitexAPI.convert_order_type(data["type"]),
                 trade_type=VitexAPI.convert_trade_type(data["side"]),
-                price=Decimal(data["price"]),
-                amount=Decimal(data["quantity"]),
+                price=Decimal(data["p"]),
+                amount=Decimal(data["q"]),
                 initial_state=VitexAPI.convert_order_state(data["status"])
             )
         order.executed_amount_base = Decimal(data["executedQuantity"])
