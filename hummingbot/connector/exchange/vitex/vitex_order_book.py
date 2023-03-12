@@ -29,11 +29,15 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
+        bids = [[float(bid["price"]), float(bid["quantity"])]
+                for bid in msg["bids"]]
+        asks = [[float(ask["price"]), float(ask["quantity"])]
+                for ask in msg["asks"]]
         content = {
             "trading_pair": msg["symbol"],
             "update_id": msg["timestamp"],
-            "bids": msg["bids"],
-            "asks": msg["asks"]
+            "bids": bids,
+            "asks": asks
         }
         return OrderBookMessage(
             OrderBookMessageType.SNAPSHOT,
@@ -50,14 +54,15 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
+        data = msg["data"][0]
         content = {
-            "trading_pair": msg["s"],
-            "trade_type": TradeType.SELL if msg["side"] == "1"
+            "trading_pair": data["s"],
+            "trade_type": TradeType.SELL if data["side"] == "1"
             else TradeType.BUY,
-            "trade_id": msg["id"],
+            "trade_id": data["id"],
             "update_id": msg["t"],
-            "amount": msg["a"],
-            "price": msg["p"]
+            "price": data["p"],
+            "amount": data["a"]
         }
         return OrderBookMessage(
             OrderBookMessageType.TRADE,
@@ -69,13 +74,12 @@ class VitexOrderBook(OrderBook):
     def diff_message_from_exchange(
         cls,
         msg: Dict[str, any],
-        data: Dict[str, any],
         timestamp: Optional[float]=None,
         metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-            data.update(metadata)
+        data = msg["data"][0]
         bids = [[float(bid["price"]), float(bid["quantity"])]
                 for bid in data.get("bids", [])]
         asks = [[float(ask["price"]), float(ask["quantity"])]
