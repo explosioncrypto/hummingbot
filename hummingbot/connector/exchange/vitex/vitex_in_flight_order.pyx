@@ -38,13 +38,11 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
 
     @property
     def is_done(self) -> bool:
-        return self.last_state in
-        {"Filled", "PendingCancel", "Cancelled", "PartiallyCancelled", "Failed", "Expired"}
+        return self.last_state in {"Filled", "PendingCancel", "Cancelled", "PartiallyCancelled", "Failed", "Expired"}
 
     @property
     def is_failure(self) -> bool:
-        return self.last_state in
-        {"PendingCancel", "Cancelled", "PartiallyCancelled", "Failed", "Expired"}
+        return self.last_state in {"PendingCancel", "Cancelled", "PartiallyCancelled", "Failed", "Expired"}
 
     @property
     def is_cancelled(self) -> bool:
