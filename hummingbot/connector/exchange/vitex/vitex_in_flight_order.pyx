@@ -22,7 +22,7 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
                  trade_type: TradeType,
                  price: Decimal,
                  amount: Decimal,
-                 initial_state: str="Unknown"):
+                 initial_state: str = "Unknown"):
         super().__init__(
             client_order_id,
             exchange_order_id,
@@ -71,8 +71,7 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         return order
 
     @classmethod
-    def update_with_order_update(cls, data: Dict[str, Any]) ->
-    VitexInFlightOrder:
+    def update_with_order_update(cls, data: Dict[str, Any]) -> VitexInFlightOrder:
         """
             Deserialize from API order data
         """
