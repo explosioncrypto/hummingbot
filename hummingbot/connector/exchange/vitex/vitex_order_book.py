@@ -29,10 +29,11 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
+        data = msg["data"]
         bids = [[float(bid["price"]), float(bid["quantity"])]
-                for bid in msg["bids"]]
+                for bid in data.get(["bids"])]
         asks = [[float(ask["price"]), float(ask["quantity"])]
-                for ask in msg["asks"]]
+                for ask in data.get(["asks"])]
         content = {
             "trading_pair": msg["symbol"],
             "update_id": msg["timestamp"],
@@ -91,13 +92,7 @@ class VitexOrderBook(OrderBook):
             "asks": asks
         }
         return OrderBookMessage(
-            OrderBookMessageType.SNAPSHOT,
+            OrderBookMessageType.DIFF,
             content,
             timestamp=timestamp
         )
-
-    @classmethod
-    def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
-        retval = VitexOrderBook()
-        retval.apply_snapshot(msg.bids, msg.asks, msg.update_id)
-        return retval
