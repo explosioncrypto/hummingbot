@@ -4,8 +4,8 @@ import asyncio
 import math
 import random
 from collections import defaultdict, deque
-from decimal import Decimal
-from typing import Callable, Dict, List, Optional, Tuple
+from decimal import Decimal, ROUND_DOWN
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from cpython cimport PyObject
 from cython.operator cimport address, dereference as deref, postincrement as inc
@@ -44,6 +44,9 @@ from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.core.Utils cimport getIteratorFromReverseIterator, reverse_iterator
 from hummingbot.core.utils.async_utils import safe_ensure_future
 from hummingbot.core.utils.estimate_fee import build_trade_fee
+
+if TYPE_CHECKING:
+    from hummingbot.client.config.config_helpers import ClientConfigAdapter
 
 ptm_logger = None
 s_decimal_0 = Decimal(0)
@@ -148,11 +151,17 @@ cdef class PaperTradeExchange(ExchangeBase):
     MARKET_SELL_ORDER_CREATED_EVENT_TAG = MarketEvent.SellOrderCreated.value
     MARKET_BUY_ORDER_CREATED_EVENT_TAG = MarketEvent.BuyOrderCreated.value
 
-    def __init__(self, order_book_tracker: OrderBookTracker, target_market: Callable, exchange_name: str):
+    def __init__(
+        self,
+        client_config_map: "ClientConfigAdapter",
+        order_book_tracker: OrderBookTracker,
+        target_market: Callable,
+        exchange_name: str,
+    ):
         order_book_tracker.data_source.order_book_create_function = lambda: CompositeOrderBook()
         self._set_order_book_tracker(order_book_tracker)
         self._budget_checker = BudgetChecker(exchange=self)
-        super(ExchangeBase, self).__init__()
+        super(ExchangeBase, self).__init__(client_config_map)
         self._exchange_name = exchange_name
         self._account_balances = {}
         self._account_available_balances = {}
@@ -194,6 +203,10 @@ cdef class PaperTradeExchange(ExchangeBase):
     @property
     def trading_pair(self) -> Dict[str, TradingPair]:
         return self._trading_pairs
+
+    @property
+    def trading_pairs(self) -> List[str]:
+        return [trading_pair for trading_pair in self._trading_pairs]
 
     @property
     def name(self) -> str:
@@ -637,8 +650,7 @@ cdef class PaperTradeExchange(ExchangeBase):
 
         order_candidate = OrderCandidate(
             trading_pair=trading_pair_str,
-            # Market orders are not maker orders
-            is_maker=False,
+            is_maker=True,
             order_type=OrderType.LIMIT,
             order_side=TradeType.BUY,
             amount=amount,
@@ -1032,6 +1044,9 @@ cdef class PaperTradeExchange(ExchangeBase):
         else:
             return Decimal(f"1e-10")
 
+    def get_order_price_quantum(self, trading_pair: str, price: Decimal) -> Decimal:
+        return self.c_get_order_price_quantum(trading_pair, price)
+
     cdef object c_get_order_size_quantum(self,
                                          str trading_pair,
                                          object order_size):
@@ -1059,7 +1074,7 @@ cdef class PaperTradeExchange(ExchangeBase):
                                         str trading_pair,
                                         object amount,
                                         object price=s_decimal_0):
-        amount = Decimal('%.7g' % amount)  # hard code to round to 8 significant digits
+        amount = amount.quantize(Decimal('1e-7'), rounding=ROUND_DOWN)
         if amount <= 1e-7:
             amount = Decimal("0")
         order_size_quantum = self.c_get_order_size_quantum(trading_pair, amount)

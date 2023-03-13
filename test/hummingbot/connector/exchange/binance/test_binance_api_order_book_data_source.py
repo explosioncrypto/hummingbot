@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from aioresponses.core import aioresponses
 from bidict import bidict
 
+from hummingbot.client.config.client_config_map import ClientConfigMap
+from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.binance import binance_constants as CONSTANTS, binance_web_utils as web_utils
 from hummingbot.connector.exchange.binance.binance_api_order_book_data_source import BinanceAPIOrderBookDataSource
 from hummingbot.connector.exchange.binance.binance_exchange import BinanceExchange
@@ -36,7 +38,9 @@ class BinanceAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.listening_task = None
         self.mocking_assistant = NetworkMockingAssistant()
 
+        client_config_map = ClientConfigAdapter(ClientConfigMap())
         self.connector = BinanceExchange(
+            client_config_map=client_config_map,
             binance_api_key="",
             binance_api_secret="",
             trading_pairs=[],
@@ -49,12 +53,16 @@ class BinanceAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.data_source.logger().setLevel(1)
         self.data_source.logger().addHandler(self)
 
+        self._original_full_order_book_reset_time = self.data_source.FULL_ORDER_BOOK_RESET_DELTA_SECONDS
+        self.data_source.FULL_ORDER_BOOK_RESET_DELTA_SECONDS = -1
+
         self.resume_test_event = asyncio.Event()
 
         self.connector._set_trading_pair_symbol_map(bidict({self.ex_trading_pair: self.trading_pair}))
 
     def tearDown(self) -> None:
         self.listening_task and self.listening_task.cancel()
+        self.data_source.FULL_ORDER_BOOK_RESET_DELTA_SECONDS = self._original_full_order_book_reset_time
         super().tearDown()
 
     def handle(self, record):
@@ -359,7 +367,7 @@ class BinanceAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
-        mock_api.get(regex_url, exception=asyncio.CancelledError)
+        mock_api.get(regex_url, exception=asyncio.CancelledError, repeat=True)
 
         with self.assertRaises(asyncio.CancelledError):
             self.async_run_with_timeout(
@@ -376,7 +384,7 @@ class BinanceAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
-        mock_api.get(regex_url, exception=Exception)
+        mock_api.get(regex_url, exception=Exception, repeat=True)
 
         self.listening_task = self.ev_loop.create_task(
             self.data_source.listen_for_order_book_snapshots(self.ev_loop, msg_queue)

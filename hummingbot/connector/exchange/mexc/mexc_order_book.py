@@ -72,7 +72,7 @@ class MexcOrderBook(OrderBook):
             "bids": data.get("bids", []),
             "asks": data.get("asks", [])
         }
-        return MexcOrderBookMessage(OrderBookMessageType.DIFF, content, timestamp or msg_ts)
+        return MexcOrderBookMessage(OrderBookMessageType.DIFF, content,timestamp or msg_ts)
 
     @classmethod
     def from_snapshot(cls, msg: OrderBookMessage) -> OrderBook:

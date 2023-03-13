@@ -1,6 +1,6 @@
 import asyncio
 from decimal import Decimal
-from typing import Dict, List, Iterator, Mapping, Optional
+from typing import Dict, List, Iterator, Mapping, Optional, TYPE_CHECKING
 
 from bidict import bidict
 
@@ -15,6 +15,9 @@ from hummingbot.core.data_type.order_book_tracker import OrderBookTracker
 from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee
 from hummingbot.core.utils.async_utils import safe_gather
 
+if TYPE_CHECKING:
+    from hummingbot.client.config.config_helpers import ClientConfigAdapter
+
 s_float_NaN = float("nan")
 s_decimal_NaN = Decimal("nan")
 s_decimal_0 = Decimal(0)
@@ -26,8 +29,8 @@ cdef class ExchangeBase(ConnectorBase):
     interface.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, client_config_map: "ClientConfigAdapter"):
+        super().__init__(client_config_map)
         self._order_book_tracker = None
         self._budget_checker = BudgetChecker(exchange=self)
         self._trading_pair_symbol_map: Optional[Mapping[str, str]] = None
@@ -177,9 +180,9 @@ cdef class ExchangeBase(ConnectorBase):
         cdef:
             OrderBook order_book = self.c_get_order_book(trading_pair)
             OrderBookQueryResult result = order_book.c_get_price_for_quote_volume(is_buy, float(volume))
-            object query_volume = self.c_quantize_order_amount(trading_pair, Decimal(result.query_volume))
+            object query_volume = Decimal(str(result.query_volume))
             object result_price = self.c_quantize_order_price(trading_pair, Decimal(result.result_price))
-            object result_volume = self.c_quantize_order_amount(trading_pair, Decimal(result.result_volume))
+            object result_volume = Decimal(str(result.result_volume))
         return ClientOrderBookQueryResult(s_decimal_NaN,
                                           query_volume,
                                           result_price,
@@ -203,7 +206,7 @@ cdef class ExchangeBase(ConnectorBase):
             OrderBook order_book = self.c_get_order_book(trading_pair)
             OrderBookQueryResult result = order_book.c_get_quote_volume_for_base_amount(is_buy, float(base_amount))
             object query_volume = self.c_quantize_order_amount(trading_pair, Decimal(result.query_volume))
-            object result_volume = self.c_quantize_order_amount(trading_pair, Decimal(result.result_volume))
+            object result_volume = Decimal(str(result.result_volume))
         return ClientOrderBookQueryResult(s_decimal_NaN,
                                           query_volume,
                                           s_decimal_NaN,
@@ -227,7 +230,7 @@ cdef class ExchangeBase(ConnectorBase):
             OrderBookQueryResult result = order_book.c_get_volume_for_price(is_buy, float(price))
             object query_price = self.c_quantize_order_price(trading_pair, Decimal(result.query_price))
             object result_price = self.c_quantize_order_price(trading_pair, Decimal(result.result_price))
-            object result_volume = self.c_quantize_order_amount(trading_pair, Decimal(result.result_volume))
+            object result_volume = Decimal(str(result.result_volume))
         return ClientOrderBookQueryResult(query_price,
                                           s_decimal_NaN,
                                           result_price,
@@ -251,6 +254,9 @@ cdef class ExchangeBase(ConnectorBase):
 
     def get_vwap_for_volume(self, trading_pair: str, is_buy: bool, volume: Decimal):
         return self.c_get_vwap_for_volume(trading_pair, is_buy, volume)
+
+    def get_price_for_quote_volume(self, trading_pair: str, is_buy: bool, volume: Decimal):
+        return self.c_get_price_for_quote_volume(trading_pair, is_buy, volume)
 
     def get_price_for_volume(self, trading_pair: str, is_buy: bool, volume: Decimal):
         return self.c_get_price_for_volume(trading_pair, is_buy, volume)
