@@ -59,9 +59,9 @@ class VitexAPIUserStreamDataSource(UserStreamTrackerDataSource):
         except websockets.exceptions.ConnectionClosed:
             return
         except Exception as ex:
-            self.logger().error(f"Unexpected error with WebSocket connection: {ex}. Retrying after 30 seconds...",
+            self.logger().error(f"Unexpected error with WebSocket connection: {ex}. Retrying after 10 seconds...",
                                 exc_info=True)
-            await asyncio.sleep(30.0)
+            await asyncio.sleep(10.0)
 
     async def listen_for_user_stream(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
         while True:
@@ -82,6 +82,6 @@ class VitexAPIUserStreamDataSource(UserStreamTrackerDataSource):
             except asyncio.CancelledError:
                 raise
             except Exception as ex:
-                self.logger().error(f"Unexpected error with WebSocket connection: {ex}. Retrying after 30 seconds...",
+                self.logger().error(f"Unexpected error with WebSocket connection: {ex}. Retrying after 10 seconds...",
                                     exc_info=True)
-                await asyncio.sleep(30.0)
+                await asyncio.sleep(10.0)

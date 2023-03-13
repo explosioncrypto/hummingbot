@@ -24,12 +24,12 @@ class VitexOrderBook(OrderBook):
     def snapshot_message_from_exchange(
         cls,
         msg: Dict[str, any],
+        data: Dict[str, any],
         timestamp: float,
         metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        data = msg["data"]
         bids = [[float(bid["price"]), float(bid["quantity"])]
                 for bid in data.get(["bids"])]
         asks = [[float(ask["price"]), float(ask["quantity"])]
@@ -50,20 +50,20 @@ class VitexOrderBook(OrderBook):
     def trade_message_from_exchange(
         cls,
         msg: Dict[str, any],
+        data: Dict[str, any],
         timestamp: Optional[float]=None,
         metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        data = msg["data"]
         content = {
-            "trading_pair": data["s"],
+            "trading_pair": data.get(["s"]),
             "trade_type": TradeType.SELL if data["side"] == "1"
             else TradeType.BUY,
-            "trade_id": data["id"],
+            "trade_id": data.get(["id"]),
             "update_id": msg["timestamp"],
-            "price": data["p"],
-            "amount": data["a"]
+            "price": data.get(["p"]),
+            "amount": data.get(["a"])
         }
         return OrderBookMessage(
             OrderBookMessageType.TRADE,
@@ -75,12 +75,12 @@ class VitexOrderBook(OrderBook):
     def diff_message_from_exchange(
         cls,
         msg: Dict[str, any],
+        data: Dict[str, any],
         timestamp: Optional[float]=None,
         metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        data = msg["data"]
         bids = [[float(bid["price"]), float(bid["quantity"])]
                 for bid in data.get("bids", [])]
         asks = [[float(ask["price"]), float(ask["quantity"])]
@@ -92,7 +92,13 @@ class VitexOrderBook(OrderBook):
             "asks": asks
         }
         return OrderBookMessage(
-            OrderBookMessageType.DIFF,
+            OrderBookMessageType.SNAPSHOT,
             content,
             timestamp=timestamp
         )
+
+    @classmethod
+    def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
+        result = VitexOrderBook()
+        result.apply_snapshot(msg.bids, msg.asks, msg.update_id)
+        return result

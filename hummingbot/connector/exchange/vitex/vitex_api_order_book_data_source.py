@@ -26,7 +26,7 @@ STREAM_URL = "wss://api.vitex.net/v2/ws"
 
 
 class VitexAPIOrderBookDataSource(OrderBookTrackerDataSource):
-    MESSAGE_TIMEOUT = 30.0
+    MESSAGE_TIMEOUT = 10.0
     PING_TIMEOUT = 10.0
 
     _baobds_logger: Optional[HummingbotLogger] = None
