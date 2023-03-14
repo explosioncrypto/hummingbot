@@ -37,7 +37,7 @@ class VitexOrderBook(OrderBook):
         msg_ts = int(timestamp * 1e-3)
         content = {
             "trading_pair": msg["symbol"],
-            "update_id": msg_ts,
+            "update_id": msg["timestamp"],
             "bids": bids,
             "asks": asks
         }
@@ -62,7 +62,7 @@ class VitexOrderBook(OrderBook):
             "trading_pair": data.get(["s"]),
             "trade_type": TradeType.SELL if data["side"] == "1" else TradeType.BUY,
             "trade_id": data.get(["id"]),
-            "update_id": msg_ts,
+            "update_id": msg["timestamp"],
             "price": data.get(["p"]),
             "amount": data.get(["a"])
         }
@@ -89,7 +89,7 @@ class VitexOrderBook(OrderBook):
         msg_ts = int(timestamp * 1e-3)
         content = {
             "trading_pair": msg["symbol"],
-            "update_id": msg_ts,
+            "update_id": msg["timestamp"],
             "bids": bids,
             "asks": asks
         }
