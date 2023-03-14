@@ -34,7 +34,7 @@ class VitexOrderBook(OrderBook):
                 for bid in data.get(["bids"])]
         asks = [[float(ask["price"]), float(ask["quantity"])]
                 for ask in data.get(["asks"])]
-        msg_ts = int(timestamp * 1e-3)
+        # msg_ts = int(timestamp * 1e-3)
         content = {
             "trading_pair": msg["symbol"],
             "update_id": msg["timestamp"],
@@ -44,7 +44,7 @@ class VitexOrderBook(OrderBook):
         return OrderBookMessage(
             OrderBookMessageType.SNAPSHOT,
             content,
-            timestamp=timestamp or msg_ts
+            timestamp=timestamp
         )
 
     @classmethod
@@ -57,7 +57,7 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        msg_ts = int(timestamp * 1e-3)
+        # msg_ts = int(timestamp * 1e-3)
         content = {
             "trading_pair": data.get(["s"]),
             "trade_type": TradeType.SELL if data["side"] == "1" else TradeType.BUY,
@@ -69,7 +69,7 @@ class VitexOrderBook(OrderBook):
         return OrderBookMessage(
             OrderBookMessageType.TRADE,
             content,
-            timestamp=timestamp or msg_ts
+            timestamp=timestamp
         )
 
     @classmethod
@@ -86,7 +86,7 @@ class VitexOrderBook(OrderBook):
                 for bid in data.get("bids", [])]
         asks = [[float(ask["price"]), float(ask["quantity"])]
                 for ask in data.get("asks", [])]
-        msg_ts = int(timestamp * 1e-3)
+        # msg_ts = int(timestamp * 1e-3)
         content = {
             "trading_pair": msg["symbol"],
             "update_id": msg["timestamp"],
@@ -96,11 +96,11 @@ class VitexOrderBook(OrderBook):
         return OrderBookMessage(
             OrderBookMessageType.SNAPSHOT,
             content,
-            timestamp=timestamp or msg_ts
+            timestamp=timestamp
         )
 
     @classmethod
-    def from_snapshot(cls, msg: OrderBookMessage) -> OrderBook:
+    def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
         result = VitexOrderBook()
         result.apply_snapshot(msg.bids, msg.asks, msg.update_id)
         return result
