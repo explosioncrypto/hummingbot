@@ -77,21 +77,22 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         """
         cdef:
             VitexInFlightOrder order = VitexInFlightOrder(
-                client_order_id=None,
-                exchange_order_id=data["orderId"],
-                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data["symbol"]),
-                order_type=VitexAPI.convert_order_type(data["type"]),
-                trade_type=VitexAPI.convert_trade_type(data["side"]),
-                price=Decimal(data["price"]),
-                amount=Decimal(data["quantity"]),
-                initial_state=VitexAPI.convert_order_state(data["status"])
+                client_order_id=data.get("address"),
+                exchange_order_id=data.get("orderId"),
+                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data.get("symbol")),
+                order_type=VitexAPI.convert_order_type(data.get("type")),
+                trade_type=VitexAPI.convert_trade_type(data.get("side")),
+                price=Decimal(data.get("price")),
+                amount=Decimal(data.get("quantity")),
+                initial_state=VitexAPI.convert_order_state(data.get("status"))
             )
-        order.executed_amount_base = Decimal(data["executedQuantity"])
-        order.executed_amount_quote = Decimal(data["executedAmount"])
+        order.executed_amount_base = Decimal(data.get("executedQuantity"))
+        order.executed_amount_quote = Decimal(data.get("executedAmount"))
         # ViteX charges quote asset as trading fees
-        order.fee_asset = VitexAPI.convert_from_exchange_symbol(data["quoteTokenSymbol"])
-        order.fee_paid = Decimal(data["fee"])
-        order.execute_price = Decimal(data["executedAvgPrice"])
-        order.last_state = VitexAPI.convert_order_state(data["status"])
+        order.fee_asset =
+        VitexAPI.convert_from_exchange_symbol(data.get("quoteTokenSymbol"))
+        order.fee_paid = Decimal(data.get("fee"))
+        order.execute_price = Decimal(data.get("executedAvgPrice"))
+        order.last_state = VitexAPI.convert_order_state(data.get("status"))
 
         return order
