@@ -89,8 +89,7 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         order.executed_amount_base = Decimal(data.get("executedQuantity"))
         order.executed_amount_quote = Decimal(data.get("executedAmount"))
         # ViteX charges quote asset as trading fees
-        order.fee_asset =
-        VitexAPI.convert_from_exchange_symbol(data.get("quoteTokenSymbol"))
+        order.fee_asset = VitexAPI.convert_from_exchange_symbol(data.get("quoteTokenSymbol"))
         order.fee_paid = Decimal(data.get("fee"))
         order.execute_price = Decimal(data.get("executedAvgPrice"))
         order.last_state = VitexAPI.convert_order_state(data.get("status"))
