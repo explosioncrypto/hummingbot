@@ -77,21 +77,21 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         """
         cdef:
             VitexInFlightOrder order = VitexInFlightOrder(
-                client_order_id=data.get("d"),
-                exchange_order_id=data.get("oid"),
-                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data.get("s")),
-                order_type=VitexAPI.convert_order_type(data.get("tp")),
-                trade_type=VitexAPI.convert_trade_type(data.get("side")),
-                price=Decimal(data.get("p")),
-                amount=Decimal(data.get("qu")),
-                initial_state=VitexAPI.convert_order_state(data.get("st"))
+                client_order_id=None,
+                exchange_order_id=data["orderId"],
+                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data["symbol"]),
+                order_type=VitexAPI.convert_order_type(data["type"]),
+                trade_type=VitexAPI.convert_trade_type(data["side"]),
+                price=Decimal(data["price"]),
+                amount=Decimal(data["quantity"]),
+                initial_state=VitexAPI.convert_order_state(data["status"])
             )
-        order.executed_amount_base = Decimal(data.get("eq"))
-        order.executed_amount_quote = Decimal(data.get("ea"))
+        order.executed_amount_base = Decimal(data["executedQuantity"])
+        order.executed_amount_quote = Decimal(data["executedAmount"])
         # ViteX charges quote asset as trading fees
-        order.fee_asset = VitexAPI.convert_from_exchange_symbol(data.get("qs"))
-        order.fee_paid = Decimal(data.get("f"))
-        order.execute_price = Decimal(data.get("eap"))
-        order.last_state = VitexAPI.convert_order_state(data.get("st"))
+        order.fee_asset = VitexAPI.convert_from_exchange_symbol(data["quoteTokenSymbol"])
+        order.fee_paid = Decimal(data["fee"])
+        order.execute_price = Decimal(data["executedAvgPrice"])
+        order.last_state = VitexAPI.convert_order_state(data["status"])
 
         return order
