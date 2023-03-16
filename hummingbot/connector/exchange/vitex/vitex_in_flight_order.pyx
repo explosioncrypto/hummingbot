@@ -77,21 +77,21 @@ cdef class VitexInFlightOrder(InFlightOrderBase):
         """
         cdef:
             VitexInFlightOrder order = VitexInFlightOrder(
-                client_order_id=data.get("address"),
-                exchange_order_id=data.get("orderId"),
-                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data.get("symbol")),
-                order_type=VitexAPI.convert_order_type(data.get("type")),
+                client_order_id=data.get("d"),
+                exchange_order_id=data.get("oid"),
+                trading_pair=VitexAPI.convert_from_exchange_trading_pair(data.get("s")),
+                order_type=VitexAPI.convert_order_type(data.get("tp")),
                 trade_type=VitexAPI.convert_trade_type(data.get("side")),
-                price=Decimal(data.get("price")),
-                amount=Decimal(data.get("quantity")),
-                initial_state=VitexAPI.convert_order_state(data.get("status"))
+                price=Decimal(data.get("p")),
+                amount=Decimal(data.get("qu")),
+                initial_state=VitexAPI.convert_order_state(data.get("st"))
             )
-        order.executed_amount_base = Decimal(data.get("executedQuantity"))
-        order.executed_amount_quote = Decimal(data.get("executedAmount"))
+        order.executed_amount_base = Decimal(data.get("eq"))
+        order.executed_amount_quote = Decimal(data.get("ea"))
         # ViteX charges quote asset as trading fees
-        order.fee_asset = VitexAPI.convert_from_exchange_symbol(data.get("quoteTokenSymbol"))
-        order.fee_paid = Decimal(data.get("fee"))
-        order.execute_price = Decimal(data.get("executedAvgPrice"))
-        order.last_state = VitexAPI.convert_order_state(data.get("status"))
+        order.fee_asset = VitexAPI.convert_from_exchange_symbol(data.get("qs"))
+        order.fee_paid = Decimal(data.get("f"))
+        order.execute_price = Decimal(data.get("eap"))
+        order.last_state = VitexAPI.convert_order_state(data.get("st"))
 
         return order
