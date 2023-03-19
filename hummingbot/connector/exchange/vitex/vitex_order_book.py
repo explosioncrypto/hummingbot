@@ -50,14 +50,13 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        data = msg["data"][0]
         content = {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(data["s"]),
-            "trade_type": VitexAPI.convert_trade_type(data["side"]),
-            "trade_id": data["id"],
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["data"]["s"]),
+            "trade_type": VitexAPI.convert_trade_type(msg["data"]["side"]),
+            "trade_id": msg["data"]["id"],
             "update_id": msg["timestamp"],
-            "price": data["p"],
-            "amount": data["a"]
+            "price": msg["data"]["p"],
+            "amount": msg["data"]["a"]
         }
         return OrderBookMessage(
             OrderBookMessageType.TRADE,
@@ -69,18 +68,16 @@ class VitexOrderBook(OrderBook):
     def diff_message_from_exchange(
         cls,
         msg: Dict[str, any],
-        data: Dict[str, any],
         timestamp: Optional[float]=None,
         metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        data = msg["data"][0]
         content = {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(data["s"]),
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["data"]["s"]),
             "update_id": msg["timestamp"],
-            "bids": data["bids"],
-            "asks": data["asks"]
+            "bids": msg["data"]["bids"],
+            "asks": msg["data"]["asks"]
         }
         return OrderBookMessage(
             OrderBookMessageType.DIFF,
