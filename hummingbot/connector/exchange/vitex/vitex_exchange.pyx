@@ -31,8 +31,7 @@ from hummingbot.core.event.events import (
     MarketTransactionFailureEvent,
     MarketOrderFailureEvent,
     OrderType,
-    TradeType,
-    TradeFee
+    TradeType
 )
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.core.utils.async_call_scheduler import AsyncCallScheduler
