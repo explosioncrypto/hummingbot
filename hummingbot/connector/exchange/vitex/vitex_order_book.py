@@ -30,7 +30,7 @@ class VitexOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
         content = {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["symbol"]),
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["trading_pair"]),
             "update_id": msg["timestamp"],
             "bids": msg["bids"],
             "asks": msg["asks"]
