@@ -284,7 +284,7 @@ cdef class VitexExchange(ExchangeBase):
                           object amount,
                           object price):
         is_maker = order_type is OrderType.LIMIT_MAKER
-        return estimate_fee("vitex", is_maker)
+        return AddedToCostTradeFee(percent=self.estimate_fee_pct(is_maker))
 
     async def _update_trading_rules(self):
         cdef:
