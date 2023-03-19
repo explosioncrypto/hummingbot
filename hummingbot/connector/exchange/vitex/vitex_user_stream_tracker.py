@@ -30,12 +30,12 @@ class VitexUserStreamTracker(UserStreamTracker):
         vite_address: Optional[str] = None,
         trading_pairs: Optional[List[str]] = [],
     ):
-        super().__init__(data_source=VitexAPIUserStreamDataSource(
-        self._vite_address: str = vite_address
-        self._trading_pairs: List[str] = trading_pairs
-        self._ev_loop: asyncio.events.AbstractEventLoop = asyncio.get_event_loop()
-        self._data_source: Optional[UserStreamTrackerDataSource] = None
-        self._user_stream_tracking_task: Optional[asyncio.Task] = None
+        super().__init__(
+            self._vite_address: str = vite_address
+            self._trading_pairs: List[str] = trading_pairs
+            self._ev_loop: asyncio.events.AbstractEventLoop = asyncio.get_event_loop()
+            self._data_source: Optional[UserStreamTrackerDataSource] = None
+            self._user_stream_tracking_task: Optional[asyncio.Task] = None)
 
     @property
     def data_source(self) -> UserStreamTrackerDataSource:
