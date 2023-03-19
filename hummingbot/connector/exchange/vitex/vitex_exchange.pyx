@@ -13,6 +13,7 @@ from typing import (
     Optional
 )
 
+from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
 from hummingbot.connector.exchange.vitex.vitex_api import VitexAPI, VitexAPIError
 from hummingbot.core.clock cimport Clock
 from hummingbot.core.data_type.cancellation_result import CancellationResult
@@ -27,6 +28,10 @@ from hummingbot.core.event.events import (
     OrderCancelledEvent,
     BuyOrderCreatedEvent,
     SellOrderCreatedEvent,
+    MarketTransactionFailureEvent,
+    MarketOrderFailureEvent,
+    OrderType,
+    TradeType
 )
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.core.utils.async_call_scheduler import AsyncCallScheduler
@@ -277,9 +282,11 @@ cdef class VitexExchange(ExchangeBase):
                           object order_type,
                           object order_side,
                           object amount,
-                          object price):
-        is_maker = order_type is OrderType.LIMIT_MAKER
-        return estimate_fee("vitex", is_maker)
+                          object price,
+                          object is_maker = None):
+
+        is_maker = order_type is OrderType.LIMIT_MAKERR
+        return AddedToCostTradeFee(percent=self.estimate_fee_pct(is_maker))
 
     async def _update_trading_rules(self):
         cdef:
@@ -834,7 +841,8 @@ cdef class VitexExchange(ExchangeBase):
                 order_type: OrderType,
                 order_side: TradeType,
                 amount: Decimal,
-                price: Decimal = s_decimal_NaN) -> TradeFee:
+                price: Decimal = s_decimal_NaN,
+                is_maker: Optional[bool] = None) -> AddedToCostTradeFee:
         return self.c_get_fee(base_currency, quote_currency, order_type, order_side, amount, price)
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
