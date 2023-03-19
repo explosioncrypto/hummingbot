@@ -189,7 +189,7 @@ class VitexAPIOrderBookDataSource(OrderBookTrackerDataSource):
                         self.logger().error("Unexpected error.", exc_info=True)
                         await asyncio.sleep(5.0)
                 this_hour: pd.Timestamp = pd.Timestamp.utcnow().replace(minute=0, second=0, microsecond=0)
-                next_hour: pd.Timestamp = this_hour + pd.Timedelta(hours=1)
+                next_hour: pd.Timestamp = this_hour + pd.Timedelta(seconds=10)
                 delta: float = next_hour.timestamp() - time.time()
                 await asyncio.sleep(delta)
             except asyncio.CancelledError:
