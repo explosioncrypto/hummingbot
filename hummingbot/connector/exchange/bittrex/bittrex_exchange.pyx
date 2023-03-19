@@ -7,7 +7,6 @@ import aiohttp
 from async_timeout import timeout
 from libc.stdint cimport int64_t
 
-from hummingbot.connector.exchange.bittrex.bittrex_api_order_book_data_source import BittrexAPIOrderBookDataSource
 from hummingbot.connector.exchange.bittrex.bittrex_auth import BittrexAuth
 from hummingbot.connector.exchange.bittrex.bittrex_in_flight_order import BittrexInFlightOrder
 from hummingbot.connector.exchange.bittrex.bittrex_order_book_tracker import BittrexOrderBookTracker
@@ -59,7 +58,7 @@ cdef class BittrexExchange(ExchangeBase):
     MARKET_RECEIVED_ASSET_EVENT_TAG = MarketEvent.ReceivedAsset.value
     MARKET_BUY_ORDER_COMPLETED_EVENT_TAG = MarketEvent.BuyOrderCompleted.value
     MARKET_SELL_ORDER_COMPLETED_EVENT_TAG = MarketEvent.SellOrderCompleted.value
-    MARKET_ORDER_CANCELED_EVENT_TAG = MarketEvent.OrderCancelled.value
+    MARKET_ORDER_CANCELLED_EVENT_TAG = MarketEvent.OrderCancelled.value
     MARKET_TRANSACTION_FAILURE_EVENT_TAG = MarketEvent.TransactionFailure.value
     MARKET_ORDER_FAILURE_EVENT_TAG = MarketEvent.OrderFailure.value
     MARKET_ORDER_FILLED_EVENT_TAG = MarketEvent.OrderFilled.value
@@ -94,7 +93,7 @@ cdef class BittrexExchange(ExchangeBase):
         self._in_flight_orders = {}
         self._last_poll_timestamp = 0
         self._last_timestamp = 0
-        self._set_order_book_tracker(BittrexOrderBookTracker(trading_pairs=trading_pairs))
+        self._order_book_tracker = BittrexOrderBookTracker(trading_pairs=trading_pairs)
         self._order_not_found_records = {}
         self._poll_notifier = asyncio.Event()
         self._poll_interval = poll_interval
@@ -116,7 +115,7 @@ cdef class BittrexExchange(ExchangeBase):
 
     @property
     def order_books(self) -> Dict[str, OrderBook]:
-        return self.order_book_tracker.order_books
+        return self._order_book_tracker.order_books
 
     @property
     def bittrex_auth(self) -> BittrexAuth:
@@ -125,7 +124,7 @@ cdef class BittrexExchange(ExchangeBase):
     @property
     def status_dict(self) -> Dict[str, bool]:
         return {
-            "order_book_initialized": self.order_book_tracker.ready,
+            "order_book_initialized": self._order_book_tracker.ready,
             "account_balance": len(self._account_balances) > 0 if self._trading_required else True,
             "trading_rule_initialized": len(self._trading_rules) > 0 if self._trading_required else True
         }
@@ -424,8 +423,10 @@ cdef class BittrexExchange(ExchangeBase):
                                          tracked_order.client_order_id,
                                          tracked_order.base_asset,
                                          tracked_order.quote_asset,
+                                         tracked_order.fee_asset or tracked_order.base_asset,
                                          tracked_order.executed_amount_base,
                                          tracked_order.executed_amount_quote,
+                                         tracked_order.fee_paid,
                                          tracked_order.order_type))
             elif tracked_order.trade_type is TradeType.SELL:
                 self.c_trigger_event(self.MARKET_SELL_ORDER_COMPLETED_EVENT_TAG,
@@ -434,14 +435,16 @@ cdef class BittrexExchange(ExchangeBase):
                                          tracked_order.client_order_id,
                                          tracked_order.base_asset,
                                          tracked_order.quote_asset,
+                                         tracked_order.fee_asset or tracked_order.base_asset,
                                          tracked_order.executed_amount_base,
                                          tracked_order.executed_amount_quote,
+                                         tracked_order.fee_paid,
                                          tracked_order.order_type))
         else:  # Order PARTIAL-CANCEL or CANCEL
-            tracked_order.last_state = "CANCELED"
+            tracked_order.last_state = "CANCELLED"
             self.logger().info(f"The {tracked_order.order_type}-{tracked_order.trade_type} "
-                               f"{client_order_id} has been canceled according to Bittrex order status API.")
-            self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                               f"{client_order_id} has been cancelled according to Bittrex order status API.")
+            self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                  OrderCancelledEvent(
                                      self._current_timestamp,
                                      client_order_id
@@ -509,9 +512,22 @@ cdef class BittrexExchange(ExchangeBase):
                 try:
                     await asyncio.wait_for(tracked_order.wait_until_completely_filled(), timeout=1)
                 except asyncio.TimeoutError:
-                    self.logger().warning(
-                        f"The order fill updates did not arrive on time for {tracked_order.client_order_id}. "
-                        f"The complete update will be processed with incorrect information.")
+                    fee_asset = tracked_order.quote_asset
+                    fee = self.get_fee(
+                        tracked_order.base_asset,
+                        tracked_order.quote_asset,
+                        tracked_order.order_type,
+                        tracked_order.trade_type,
+                        tracked_order.amount,
+                        tracked_order.price)
+                    fee_amount = fee.fee_amount_in_token(tracked_order.trading_pair,
+                                                         tracked_order.price,
+                                                         tracked_order.amount,
+                                                         tracked_order.quote_asset,
+                                                         self)
+                else:
+                    fee_asset = tracked_order.fee_asset or tracked_order.quote_asset
+                    fee_amount = tracked_order.fee_paid
 
                 self.logger().info(f"The {tracked_order.trade_type.name} order {tracked_order.client_order_id} "
                                    f"has completed according to order delta websocket API.")
@@ -521,17 +537,19 @@ cdef class BittrexExchange(ExchangeBase):
                                          tracked_order.client_order_id,
                                          tracked_order.base_asset,
                                          tracked_order.quote_asset,
+                                         fee_asset,
                                          tracked_order.executed_amount_base,
                                          tracked_order.executed_amount_quote,
+                                         fee_amount,
                                          tracked_order.order_type
                                      ))
                 self.c_stop_tracking_order(tracked_order.client_order_id)
 
             else:  # CANCEL
-                self.logger().info(f"The order {tracked_order.client_order_id} has been canceled "
+                self.logger().info(f"The order {tracked_order.client_order_id} has been cancelled "
                                    f"according to Order Delta WebSocket API.")
                 tracked_order.last_state = "cancelled"
-                self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                      OrderCancelledEvent(self._current_timestamp,
                                                          tracked_order.client_order_id))
                 self.c_stop_tracking_order(tracked_order.client_order_id)
@@ -613,7 +631,7 @@ cdef class BittrexExchange(ExchangeBase):
 
     cdef OrderBook c_get_order_book(self, str trading_pair):
         cdef:
-            dict order_books = self.order_book_tracker.order_books
+            dict order_books = self._order_book_tracker.order_books
 
         if trading_pair not in order_books:
             raise ValueError(f"No order book exists for '{trading_pair}'.")
@@ -917,10 +935,10 @@ cdef class BittrexExchange(ExchangeBase):
 
             cancel_result = await self._api_request("DELETE", path_url=path_url)
             if cancel_result["status"] == "CLOSED":
-                self.logger().info(f"Successfully canceled order {order_id}.")
-                tracked_order.last_state = "CANCELED"
+                self.logger().info(f"Successfully cancelled order {order_id}.")
+                tracked_order.last_state = "CANCELLED"
                 self.c_stop_tracking_order(order_id)
-                self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                      OrderCancelledEvent(self._current_timestamp, order_id))
                 return order_id
         except asyncio.CancelledError:
@@ -930,7 +948,7 @@ cdef class BittrexExchange(ExchangeBase):
                 # The order was never there to begin with. So cancelling it is a no-op but semantically successful.
                 self.logger().info(f"The order {order_id} does not exist on Bittrex. No cancellation needed.")
                 self.c_stop_tracking_order(order_id)
-                self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                      OrderCancelledEvent(self._current_timestamp, order_id))
                 return order_id
 
@@ -970,7 +988,7 @@ cdef class BittrexExchange(ExchangeBase):
                         successful_cancellation.append(CancellationResult(order_id, True))
         except Exception:
             self.logger().network(
-                f"Unexpected error canceling orders.",
+                f"Unexpected error cancelling orders.",
                 app_warning_msg="Failed to cancel order on Bittrex. Check API key and network connection."
             )
 
@@ -1023,7 +1041,7 @@ cdef class BittrexExchange(ExchangeBase):
         return NetworkStatus.CONNECTED
 
     def _stop_network(self):
-        self.order_book_tracker.stop()
+        self._order_book_tracker.stop()
         if self._status_polling_task is not None:
             self._status_polling_task.cancel()
         if self._user_stream_tracker_task is not None:
@@ -1038,7 +1056,7 @@ cdef class BittrexExchange(ExchangeBase):
 
     async def start_network(self):
         self._stop_network()
-        self.order_book_tracker.start()
+        self._order_book_tracker.start()
         self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
         if self._trading_required:
             self._status_polling_task = safe_ensure_future(self._status_polling_loop())
@@ -1071,11 +1089,3 @@ cdef class BittrexExchange(ExchangeBase):
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
         return self.c_get_order_book(trading_pair)
-
-    async def all_trading_pairs(self) -> List[str]:
-        # This method should be removed and instead we should implement _initialize_trading_pair_symbol_map
-        return await BittrexAPIOrderBookDataSource.fetch_trading_pairs()
-
-    async def get_last_traded_prices(self, trading_pairs: List[str]) -> Dict[str, float]:
-        # This method should be removed and instead we should implement _get_last_traded_price
-        return await BittrexAPIOrderBookDataSource.get_last_traded_prices(trading_pairs=trading_pairs)

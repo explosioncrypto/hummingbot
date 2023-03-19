@@ -2,25 +2,24 @@ import asyncio
 import copy
 import os
 import shutil
-from typing import TYPE_CHECKING, Dict, Optional
 
-from hummingbot.client.config.config_helpers import (
-    default_strategy_file_path,
-    format_config_file_name,
-    get_strategy_config_map,
-    get_strategy_template_path,
-    parse_config_default_to_text,
-    parse_cvar_value,
-    save_previous_strategy_value,
-    save_to_yml,
-)
-from hummingbot.client.config.config_validators import validate_strategy
 from hummingbot.client.config.config_var import ConfigVar
+from hummingbot.core.utils.async_utils import safe_ensure_future
+from hummingbot.client.config.config_helpers import (
+    get_strategy_config_map,
+    parse_cvar_value,
+    default_strategy_file_path,
+    save_to_yml,
+    get_strategy_template_path,
+    format_config_file_name,
+    parse_config_default_to_text
+)
+from hummingbot.client.settings import CONF_FILE_PATH, required_exchanges
 from hummingbot.client.config.global_config_map import global_config_map
 from hummingbot.client.config.security import Security
-from hummingbot.client.settings import CONF_FILE_PATH, required_exchanges
+from hummingbot.client.config.config_validators import validate_strategy
 from hummingbot.client.ui.completer import load_completer
-from hummingbot.core.utils.async_utils import safe_ensure_future
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from hummingbot.client.hummingbot_application import HummingbotApplication
@@ -32,7 +31,7 @@ class CreateCommand:
         if file_name is not None:
             file_name = format_config_file_name(file_name)
             if os.path.exists(os.path.join(CONF_FILE_PATH, file_name)):
-                self.notify(f"{file_name} already exists.")
+                self._notify(f"{file_name} already exists.")
                 return
 
         safe_ensure_future(self.prompt_for_configuration(file_name))
@@ -54,8 +53,8 @@ class CreateCommand:
         strategy = strategy_config.value
         config_map = get_strategy_config_map(strategy)
         config_map_backup = copy.deepcopy(config_map)
-        self.notify(f"Please see https://docs.hummingbot.io/strategies/{strategy.replace('_', '-')}/ "
-                    f"while setting up these below configuration.")
+        self._notify(f"Please see https://docs.hummingbot.io/strategies/{strategy.replace('_', '-')}/ "
+                     f"while setting up these below configuration.")
         # assign default values and reset those not required
         for config in config_map.values():
             if config.required:
@@ -77,7 +76,6 @@ class CreateCommand:
 
         if file_name is None:
             file_name = await self.prompt_new_file_name(strategy)
-            save_previous_strategy_value(file_name)
             if self.app.to_stop_config:
                 self.stop_config(config_map, config_map_backup)
                 self.app.set_text("")
@@ -91,19 +89,19 @@ class CreateCommand:
         self.strategy_name = strategy
         # Reload completer here otherwise the new file will not appear
         self.app.input_field.completer = load_completer(self)
-        self.notify(f"A new config file {self.strategy_file_name} created.")
+        self._notify(f"A new config file {self.strategy_file_name} created.")
         self.placeholder_mode = False
         self.app.hide_input = False
         try:
             timeout = float(global_config_map["create_command_timeout"].value)
             all_status_go = await asyncio.wait_for(self.status_check_all(), timeout)
         except asyncio.TimeoutError:
-            self.notify("\nA network error prevented the connection check to complete. See logs for more details.")
+            self._notify("\nA network error prevented the connection check to complete. See logs for more details.")
             self.strategy_file_name = None
             self.strategy_name = None
             raise
         if all_status_go:
-            self.notify("\nEnter \"start\" to start market making.")
+            self._notify("\nEnter \"start\" to start market making.")
 
     async def prompt_a_config(self,  # type: HummingbotApplication
                               config: ConfigVar,
@@ -123,8 +121,7 @@ class CreateCommand:
         value = parse_cvar_value(config, input_value)
         err_msg = await config.validate(input_value)
         if err_msg is not None:
-            self.notify(err_msg)
-            config.value = None
+            self._notify(err_msg)
             await self.prompt_a_config(config)
         else:
             config.value = value
@@ -137,10 +134,10 @@ class CreateCommand:
         input = format_config_file_name(input)
         file_path = os.path.join(CONF_FILE_PATH, input)
         if input is None or input == "":
-            self.notify("Value is required.")
+            self._notify("Value is required.")
             return await self.prompt_new_file_name(strategy)
         elif os.path.exists(file_path):
-            self.notify(f"{input} file already exists, please enter a new name.")
+            self._notify(f"{input} file already exists, please enter a new name.")
             return await self.prompt_new_file_name(strategy)
         else:
             return input

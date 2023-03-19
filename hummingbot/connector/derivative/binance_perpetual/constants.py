@@ -2,8 +2,6 @@ from hummingbot.core.api_throttler.data_types import LinkedLimitWeightPair, Rate
 from hummingbot.core.data_type.in_flight_order import OrderState
 
 EXCHANGE_NAME = "binance_perpetual"
-BROKER_ID = "x-3QreWesy"
-MAX_ORDER_ID_LEN = 36
 
 DOMAIN = EXCHANGE_NAME
 TESTNET_DOMAIN = "binance_perpetual_testnet"
@@ -57,8 +55,8 @@ ORDER_STATE = {
     "NEW": OrderState.OPEN,
     "FILLED": OrderState.FILLED,
     "PARTIALLY_FILLED": OrderState.PARTIALLY_FILLED,
-    "CANCELED": OrderState.CANCELED,
-    "EXPIRED": OrderState.CANCELED,
+    "CANCELED": OrderState.CANCELLED,
+    "EXPIRED": OrderState.CANCELLED,
     "REJECTED": OrderState.FAILED,
 }
 

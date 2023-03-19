@@ -6,9 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 import aiohttp
 
-from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
-from hummingbot.core.web_assistant.connections.data_types import WSJSONRequest, WSResponse
 from hummingbot.core.web_assistant.connections.ws_connection import WSConnection
+from hummingbot.core.web_assistant.connections.data_types import WSRequest, WSResponse
+from test.hummingbot.connector.network_mocking_assistant import (
+    NetworkMockingAssistant
+)
 
 
 class WSConnectionTest(unittest.TestCase):
@@ -61,7 +63,7 @@ class WSConnectionTest(unittest.TestCase):
         self.assertEqual("WS is connected.", str(e.exception))
 
     def test_send_when_disconnected_raises(self):
-        request = WSJSONRequest(payload={"one": 1})
+        request = WSRequest(payload={"one": 1})
 
         with self.assertRaises(RuntimeError) as e:
             self.async_run_with_timeout(self.ws_connection.send(request))
@@ -72,7 +74,7 @@ class WSConnectionTest(unittest.TestCase):
     def test_send(self, ws_connect_mock):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
         self.async_run_with_timeout(self.ws_connection.connect(self.ws_url))
-        request = WSJSONRequest(payload={"one": 1})
+        request = WSRequest(payload={"one": 1})
 
         self.async_run_with_timeout(self.ws_connection.send(request))
 

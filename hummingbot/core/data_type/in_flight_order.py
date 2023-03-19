@@ -24,12 +24,10 @@ class OrderState(Enum):
     PENDING_CREATE = 0
     OPEN = 1
     PENDING_CANCEL = 2
-    CANCELED = 3
+    CANCELLED = 3
     PARTIALLY_FILLED = 4
     FILLED = 5
     FAILED = 6
-    PENDING_APPROVAL = 7
-    APPROVED = 8
 
 
 class OrderUpdate(NamedTuple):
@@ -38,7 +36,6 @@ class OrderUpdate(NamedTuple):
     new_state: OrderState
     client_order_id: Optional[str] = None
     exchange_order_id: Optional[str] = None
-    misc_updates: Optional[Dict[str, Any]] = None
 
 
 class TradeUpdate(NamedTuple):
@@ -173,7 +170,7 @@ class InFlightOrder:
     @property
     def is_done(self) -> bool:
         return (
-            self.current_state in {OrderState.CANCELED, OrderState.FILLED, OrderState.FAILED}
+            self.current_state in {OrderState.CANCELLED, OrderState.FILLED, OrderState.FAILED}
             or math.isclose(self.executed_amount_base, self.amount)
             or self.executed_amount_base >= self.amount
         )
@@ -194,7 +191,7 @@ class InFlightOrder:
 
     @property
     def is_cancelled(self) -> bool:
-        return self.current_state == OrderState.CANCELED
+        return self.current_state == OrderState.CANCELLED
 
     @property
     def average_executed_price(self) -> Optional[Decimal]:
@@ -300,8 +297,7 @@ class InFlightOrder:
                 price=trade_update.fill_price,
                 order_amount=trade_update.fill_base_amount,
                 token=token,
-                exchange=exchange
-            )
+                exchange=exchange)
 
         return total_fee_in_token
 

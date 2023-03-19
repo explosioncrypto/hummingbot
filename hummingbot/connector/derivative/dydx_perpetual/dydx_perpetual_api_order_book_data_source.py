@@ -1,18 +1,22 @@
+#!/usr/bin/env python
+
 import asyncio
 import logging
 import time
-from collections import defaultdict
-from decimal import Decimal
-from typing import Any, Dict, List, Optional
 
 import hummingbot.connector.derivative.dydx_perpetual.dydx_perpetual_constants as CONSTANTS
+
+from collections import defaultdict
+from decimal import Decimal
+from typing import Dict, List, Optional, Any
+
 from hummingbot.connector.derivative.dydx_perpetual.dydx_perpetual_order_book import DydxPerpetualOrderBook
 from hummingbot.connector.derivative.dydx_perpetual.dydx_perpetual_utils import build_api_factory
+from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 from hummingbot.core.data_type.order_book import OrderBook
 from hummingbot.core.data_type.order_book_message import OrderBookMessage
 from hummingbot.core.data_type.order_book_row import ClientOrderBookRow
-from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest, WSJSONRequest
+from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest, WSRequest
 from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
@@ -144,12 +148,12 @@ class DydxPerpetualAPIOrderBookDataSource(OrderBookTrackerDataSource):
     async def _subscribe_channels(self, ws: WSAssistant):
         try:
             for pair in self._trading_pairs:
-                subscribe_orderbook_request: WSJSONRequest = WSJSONRequest({
+                subscribe_orderbook_request: WSRequest = WSRequest({
                     "type": "subscribe",
                     "channel": self.ORDERBOOK_CHANNEL,
                     "id": pair,
                 })
-                subscribe_trade_request: WSJSONRequest = WSJSONRequest({
+                subscribe_trade_request: WSRequest = WSRequest({
                     "type": "subscribe",
                     "channel": self.TRADE_CHANNEL,
                     "id": pair,

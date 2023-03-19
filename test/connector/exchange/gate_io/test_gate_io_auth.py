@@ -1,20 +1,18 @@
-import asyncio
-import logging
+#!/usr/bin/env python
 import sys
+import asyncio
 import unittest
-from os.path import join, realpath
-from typing import Any, Dict
-
 import aiohttp
-import ujson
-
 import conf
-from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS
+import logging
+import ujson
+from os.path import join, realpath
+from typing import Dict, Any
 from hummingbot.connector.exchange.gate_io.gate_io_auth import GateIoAuth
-from hummingbot.connector.exchange.gate_io.gate_io_utils import build_gate_io_api_factory, rest_response_with_errors
+from hummingbot.connector.exchange.gate_io.gate_io_utils import rest_response_with_errors
 from hummingbot.connector.exchange.gate_io.gate_io_websocket import GateIoWebsocket
-from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
+from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS
 
 sys.path.insert(0, realpath(join(__file__, "../../../../../")))
 logging.basicConfig(level=METRICS_LOG_LEVEL)
@@ -56,9 +54,7 @@ class TestAuth(unittest.TestCase):
         return response
 
     async def ws_auth(self) -> Dict[Any, Any]:
-        ws = GateIoWebsocket(api_factory=build_gate_io_api_factory(
-            throttler=AsyncThrottler(CONSTANTS.RATE_LIMITS)),
-            auth=self.auth)
+        ws = GateIoWebsocket(self.auth)
         await ws.connect()
         await ws.subscribe(CONSTANTS.USER_BALANCE_ENDPOINT_NAME)
         async for response in ws.on_message():

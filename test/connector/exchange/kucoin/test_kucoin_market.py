@@ -307,6 +307,7 @@ class KucoinExchangeUnitTest(unittest.TestCase):
         self.assertEqual("USDT", buy_order_completed_event.quote_asset)
         self.assertAlmostEqual(base_amount_traded, float(buy_order_completed_event.base_asset_amount), places=4)
         self.assertAlmostEqual(quote_amount_traded, float(buy_order_completed_event.quote_asset_amount), places=4)
+        self.assertGreater(buy_order_completed_event.fee_amount, Decimal(0))
         self.assertTrue(any([isinstance(event, BuyOrderCreatedEvent) and event.order_id == order_id
                              for event in self.market_logger.event_log]))
         # Reset the logs
@@ -360,7 +361,7 @@ class KucoinExchangeUnitTest(unittest.TestCase):
             self.web_app.update_response("delete", API_BASE_URL, f"/api/v1/orders/{exch_order_id}", resp)
         self.market.cancel(trading_pair, order_id)
         if API_MOCK_ENABLED:
-            resp = FixtureKucoin.GET_CANCELED_ORDER.copy()
+            resp = FixtureKucoin.GET_CANCELLED_ORDER.copy()
             resp["data"]["id"] = exch_order_id
             resp["data"]["clientOid"] = order_id
             self.web_app.update_response("get", API_BASE_URL, f"/api/v1/orders/{exch_order_id}", resp)
@@ -389,7 +390,7 @@ class KucoinExchangeUnitTest(unittest.TestCase):
 
         self.run_parallel(asyncio.sleep(1))
         if API_MOCK_ENABLED:
-            resp = FixtureKucoin.ORDERS_BATCH_CANCELED.copy()
+            resp = FixtureKucoin.ORDERS_BATCH_CANCELLED.copy()
             resp["data"]["cancelledOrderIds"] = [exch_order_id, exch_order_id2]
             self.web_app.update_response("delete", API_BASE_URL, "/api/v1/orders", resp)
         [cancellation_results] = self.run_parallel(self.market_2.cancel_all(5))
@@ -470,7 +471,7 @@ class KucoinExchangeUnitTest(unittest.TestCase):
             # Cancel the order and verify that the change is saved.
             self.market.cancel(trading_pair, order_id)
             if API_MOCK_ENABLED:
-                resp = FixtureKucoin.GET_CANCELED_ORDER.copy()
+                resp = FixtureKucoin.GET_CANCELLED_ORDER.copy()
                 resp["data"]["id"] = exch_order_id
                 resp["data"]["clientOid"] = order_id
                 self.web_app.update_response("get", API_BASE_URL, f"/api/v1/orders/{exch_order_id}", resp)

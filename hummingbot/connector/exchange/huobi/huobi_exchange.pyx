@@ -1,3 +1,4 @@
+import aiohttp
 import asyncio
 import logging
 import time
@@ -14,17 +15,15 @@ import ujson
 from libc.stdint cimport int64_t
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
-from hummingbot.connector.exchange.huobi.huobi_api_order_book_data_source import HuobiAPIOrderBookDataSource
 from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
 from hummingbot.connector.exchange.huobi.huobi_in_flight_order import HuobiInFlightOrder
 from hummingbot.connector.exchange.huobi.huobi_order_book_tracker import HuobiOrderBookTracker
 from hummingbot.connector.exchange.huobi.huobi_user_stream_tracker import HuobiUserStreamTracker
 from hummingbot.connector.exchange.huobi.huobi_utils import (
-    BROKER_ID,
     build_api_factory,
     convert_to_exchange_trading_pair,
+    get_new_client_order_id,
 )
-from hummingbot.connector.utils import get_new_client_order_id
 from hummingbot.connector.exchange_base import ExchangeBase
 from hummingbot.connector.trading_rule cimport TradingRule
 from hummingbot.core.clock cimport Clock
@@ -47,8 +46,12 @@ from hummingbot.core.event.events import (
 )
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.core.utils.async_call_scheduler import AsyncCallScheduler
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.core.utils.async_utils import (
+    safe_ensure_future,
+    safe_gather,
+)
 from hummingbot.core.utils.estimate_fee import estimate_fee
+from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest
 from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
 from hummingbot.logger import HummingbotLogger
@@ -81,7 +84,7 @@ cdef class HuobiExchangeTransactionTracker(TransactionTracker):
 cdef class HuobiExchange(ExchangeBase):
     MARKET_BUY_ORDER_COMPLETED_EVENT_TAG = MarketEvent.BuyOrderCompleted.value
     MARKET_SELL_ORDER_COMPLETED_EVENT_TAG = MarketEvent.SellOrderCompleted.value
-    MARKET_ORDER_CANCELED_EVENT_TAG = MarketEvent.OrderCancelled.value
+    MARKET_ORDER_CANCELLED_EVENT_TAG = MarketEvent.OrderCancelled.value
     MARKET_TRANSACTION_FAILURE_EVENT_TAG = MarketEvent.TransactionFailure.value
     MARKET_ORDER_FAILURE_EVENT_TAG = MarketEvent.OrderFailure.value
     MARKET_ORDER_FILLED_EVENT_TAG = MarketEvent.OrderFilled.value
@@ -114,10 +117,10 @@ cdef class HuobiExchange(ExchangeBase):
         self._last_poll_timestamp = 0
         self._last_timestamp = 0
         self._api_factory = build_api_factory()
-        self._set_order_book_tracker(HuobiOrderBookTracker(
+        self._order_book_tracker = HuobiOrderBookTracker(
             trading_pairs=trading_pairs,
             api_factory=self._api_factory,
-        ))
+        )
         self._poll_notifier = asyncio.Event()
         self._rest_assistant = None
         self._status_polling_task = None
@@ -135,8 +138,12 @@ cdef class HuobiExchange(ExchangeBase):
         return "huobi"
 
     @property
+    def order_book_tracker(self) -> HuobiOrderBookTracker:
+        return self._order_book_tracker
+
+    @property
     def order_books(self) -> Dict[str, OrderBook]:
-        return self.order_book_tracker.order_books
+        return self._order_book_tracker.order_books
 
     @property
     def trading_rules(self) -> Dict[str, TradingRule]:
@@ -180,7 +187,7 @@ cdef class HuobiExchange(ExchangeBase):
 
     async def start_network(self):
         self._stop_network()
-        self.order_book_tracker.start()
+        self._order_book_tracker.start()
         self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
         self._user_stream_event_listener_task = safe_ensure_future(self._user_stream_event_listener())
         if self._trading_required:
@@ -189,7 +196,7 @@ cdef class HuobiExchange(ExchangeBase):
             self._status_polling_task = safe_ensure_future(self._status_polling_loop())
 
     def _stop_network(self):
-        self.order_book_tracker.stop()
+        self._order_book_tracker.stop()
         if self._status_polling_task is not None:
             self._status_polling_task.cancel()
             self._status_polling_task = None
@@ -480,8 +487,10 @@ cdef class HuobiExchange(ExchangeBase):
                                                                         tracked_order.client_order_id,
                                                                         tracked_order.base_asset,
                                                                         tracked_order.quote_asset,
+                                                                        tracked_order.fee_asset or tracked_order.base_asset,
                                                                         tracked_order.executed_amount_base,
                                                                         tracked_order.executed_amount_quote,
+                                                                        tracked_order.fee_paid,
                                                                         tracked_order.order_type))
                         else:
                             self.logger().info(f"The market sell order {tracked_order.client_order_id} has completed "
@@ -491,14 +500,16 @@ cdef class HuobiExchange(ExchangeBase):
                                                                          tracked_order.client_order_id,
                                                                          tracked_order.base_asset,
                                                                          tracked_order.quote_asset,
+                                                                         tracked_order.fee_asset or tracked_order.quote_asset,
                                                                          tracked_order.executed_amount_base,
                                                                          tracked_order.executed_amount_quote,
+                                                                         tracked_order.fee_paid,
                                                                          tracked_order.order_type))
                     else:  # Handles "canceled" or "partial-canceled" order
                         self.c_stop_tracking_order(tracked_order.client_order_id)
                         self.logger().info(f"The market order {tracked_order.client_order_id} "
-                                           f"has been canceled according to order status API.")
-                        self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                                           f"has been cancelled according to order status API.")
+                        self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                              OrderCancelledEvent(self._current_timestamp,
                                                                  tracked_order.client_order_id))
 
@@ -605,7 +616,24 @@ cdef class HuobiExchange(ExchangeBase):
             except asyncio.TimeoutError:
                 self.logger().warning(
                     f"The order fill updates did not arrive on time for {tracked_order.client_order_id}. "
-                    f"The complete update will be processed with incorrect information.")
+                    f"The complete update will be processed with estimated fees.")
+                fee_asset = tracked_order.quote_asset
+                fee = self.get_fee(
+                    tracked_order.base_asset,
+                    tracked_order.quote_asset,
+                    tracked_order.order_type,
+                    tracked_order.trade_type,
+                    tracked_order.amount,
+                    tracked_order.price)
+                fee_amount = fee.fee_amount_in_token(
+                    tracked_order.trading_pair,
+                    tracked_order.price,
+                    tracked_order.amount,
+                    token=tracked_order.quote_asset,
+                    exchange=self)
+            else:
+                fee_asset = tracked_order.fee_asset
+                fee_amount = tracked_order.fee_paid
 
             self.logger().info(f"The {tracked_order.trade_type.name} order {tracked_order.client_order_id} "
                                f"has completed according to order delta websocket API.")
@@ -615,17 +643,19 @@ cdef class HuobiExchange(ExchangeBase):
                                      tracked_order.client_order_id,
                                      tracked_order.base_asset,
                                      tracked_order.quote_asset,
+                                     tracked_order.fee_asset or tracked_order.quote_asset,
                                      tracked_order.executed_amount_base,
                                      tracked_order.executed_amount_quote,
+                                     tracked_order.fee_paid,
                                      tracked_order.order_type
                                  ))
             self.c_stop_tracking_order(tracked_order.client_order_id)
 
         if order_status == "canceled":
             tracked_order.last_state = order_status
-            self.logger().info(f"The order {tracked_order.client_order_id} has been canceled "
+            self.logger().info(f"The order {tracked_order.client_order_id} has been cancelled "
                                f"according to order delta websocket API.")
-            self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+            self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                  OrderCancelledEvent(self._current_timestamp,
                                                      tracked_order.client_order_id))
             self.c_stop_tracking_order(tracked_order.client_order_id)
@@ -664,7 +694,7 @@ cdef class HuobiExchange(ExchangeBase):
     def status_dict(self) -> Dict[str, bool]:
         return {
             "account_id_initialized": self._account_id != "" if self._trading_required else True,
-            "order_books_initialized": self.order_book_tracker.ready,
+            "order_books_initialized": self._order_book_tracker.ready,
             "account_balance": len(self._account_balances) > 0 if self._trading_required else True,
             "trading_rule_initialized": len(self._trading_rules) > 0
         }
@@ -771,9 +801,7 @@ cdef class HuobiExchange(ExchangeBase):
                    object price=s_decimal_0,
                    dict kwargs={}):
         cdef:
-            str order_id = get_new_client_order_id(
-                is_buy=True, trading_pair=trading_pair, hbot_order_id_prefix=BROKER_ID
-            )
+            str order_id = get_new_client_order_id(TradeType.BUY, trading_pair)
 
         safe_ensure_future(self.execute_buy(order_id, trading_pair, amount, order_type, price))
         return order_id
@@ -843,10 +871,8 @@ cdef class HuobiExchange(ExchangeBase):
                     object order_type=OrderType.LIMIT, object price=s_decimal_0,
                     dict kwargs={}):
         cdef:
-            str order_id = get_new_client_order_id(
-                is_buy=False, trading_pair=trading_pair, hbot_order_id_prefix=BROKER_ID
-            )
-
+            int64_t tracking_nonce = <int64_t> get_tracking_nonce()
+            str order_id = get_new_client_order_id(TradeType.SELL, trading_pair)
         safe_ensure_future(self.execute_sell(order_id, trading_pair, amount, order_type, price))
         return order_id
 
@@ -863,9 +889,9 @@ cdef class HuobiExchange(ExchangeBase):
             if order_state == 7:
                 # order-state is canceled
                 self.c_stop_tracking_order(tracked_order.client_order_id)
-                self.logger().info(f"The order {tracked_order.client_order_id} has been canceled according"
+                self.logger().info(f"The order {tracked_order.client_order_id} has been cancelled according"
                                    f" to order status API. order_state - {order_state}")
-                self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                      OrderCancelledEvent(self._current_timestamp,
                                                          tracked_order.client_order_id))
             else:
@@ -1027,11 +1053,3 @@ cdef class HuobiExchange(ExchangeBase):
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
         return self.c_get_order_book(trading_pair)
-
-    async def all_trading_pairs(self) -> List[str]:
-        # This method should be removed and instead we should implement _initialize_trading_pair_symbol_map
-        return await HuobiAPIOrderBookDataSource.fetch_trading_pairs()
-
-    async def get_last_traded_prices(self, trading_pairs: List[str]) -> Dict[str, float]:
-        # This method should be removed and instead we should implement _get_last_traded_price
-        return await HuobiAPIOrderBookDataSource.get_last_traded_prices(trading_pairs=trading_pairs)

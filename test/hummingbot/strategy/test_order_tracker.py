@@ -2,16 +2,19 @@ import asyncio
 import time
 import unittest
 from decimal import Decimal
-from typing import List, Union
+from typing import (
+    List,
+    Union,
+)
 
 import pandas as pd
 
-from hummingbot.connector.test_support.mock_paper_exchange import MockPaperExchange
 from hummingbot.core.clock import Clock, ClockMode
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.market_order import MarketOrder
 from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
 from hummingbot.strategy.order_tracker import OrderTracker
+from test.mock.mock_paper_exchange import MockPaperExchange
 
 
 class OrderTrackerUnitTests(unittest.TestCase):
@@ -312,22 +315,17 @@ class OrderTrackerUnitTests(unittest.TestCase):
         self.simulate_place_order(self.order_tracker, order, self.market_info)
 
         # Compare order details and output
-        other_order = self.order_tracker.get_shadow_limit_orders()[self.market_info][order.client_order_id]
-        self.assertEqual(order.trading_pair, other_order.trading_pair)
-        self.assertEqual(order.price, other_order.price)
-        self.assertEqual(order.quantity, other_order.quantity)
-        self.assertEqual(order.is_buy, other_order.is_buy)
+        self.assertIsNotNone(self.order_tracker.get_shadow_limit_orders()[self.market_info])
+        self.assertEqual(str(self.order_tracker.get_shadow_limit_orders()[self.market_info][order.client_order_id]),
+                         str(order))
 
         # Simulate order being cancelled
         self.simulate_cancel_order(self.order_tracker, order)
         self.simulate_stop_tracking_order(self.order_tracker, order, self.market_info)
 
         # Check that order is not yet removed from shadow_limit_orders
-        other_order = self.order_tracker.get_shadow_limit_orders()[self.market_info][order.client_order_id]
-        self.assertEqual(order.trading_pair, other_order.trading_pair)
-        self.assertEqual(order.price, other_order.price)
-        self.assertEqual(order.quantity, other_order.quantity)
-        self.assertEqual(order.is_buy, other_order.is_buy)
+        self.assertEqual(str(self.order_tracker.get_shadow_limit_orders()[self.market_info][order.client_order_id]),
+                         str(order))
 
         # Simulates current_timestamp > SHADOW_MAKER_ORDER_KEEP_ALIVE_DURATION
         self.clock.backtest_til(self.start_timestamp + OrderTracker.SHADOW_MAKER_ORDER_KEEP_ALIVE_DURATION + 1)
@@ -405,11 +403,7 @@ class OrderTrackerUnitTests(unittest.TestCase):
         self.assertNotEqual(order, self.order_tracker.get_limit_order(self.market_info, "UNRECOGNIZED_ORDER"))
 
         # Matching Order
-        other_order = self.order_tracker.get_limit_order(self.market_info, order.client_order_id)
-        self.assertEqual(order.trading_pair, other_order.trading_pair)
-        self.assertEqual(order.price, other_order.price)
-        self.assertEqual(order.quantity, other_order.quantity)
-        self.assertEqual(order.is_buy, other_order.is_buy)
+        self.assertEqual(str(order), str(self.order_tracker.get_limit_order(self.market_info, order.client_order_id)))
 
     def test_get_market_order(self):
         # Initial validation
@@ -448,11 +442,7 @@ class OrderTrackerUnitTests(unittest.TestCase):
         self.assertNotEqual(order, self.order_tracker.get_shadow_limit_order("UNRECOGNIZED_ORDER"))
 
         # Matching Order
-        shadow_order = self.order_tracker.get_shadow_limit_order(order.client_order_id)
-        self.assertEqual(order.trading_pair, shadow_order.trading_pair)
-        self.assertEqual(order.price, shadow_order.price)
-        self.assertEqual(order.quantity, shadow_order.quantity)
-        self.assertEqual(order.is_buy, shadow_order.is_buy)
+        self.assertEqual(str(order), str(self.order_tracker.get_shadow_limit_order(order.client_order_id)))
 
         # Simulate order cancel
         self.simulate_cancel_order(self.order_tracker, order)

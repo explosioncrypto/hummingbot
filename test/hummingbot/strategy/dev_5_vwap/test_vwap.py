@@ -1,3 +1,4 @@
+import logging
 import math
 import unittest
 from decimal import Decimal
@@ -6,15 +7,25 @@ from typing import List
 import pandas as pd
 
 from hummingbot.connector.exchange.paper_trade.paper_trade_exchange import QuantizationParams
-from hummingbot.connector.test_support.mock_paper_exchange import MockPaperExchange
-from hummingbot.core.clock import Clock, ClockMode
+from hummingbot.core.clock import (
+    Clock,
+    ClockMode
+)
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee
 from hummingbot.core.event.event_logger import EventLogger
-from hummingbot.core.event.events import BuyOrderCompletedEvent, MarketEvent, OrderFilledEvent, SellOrderCompletedEvent
+from hummingbot.core.event.events import (
+    BuyOrderCompletedEvent,
+    MarketEvent,
+    OrderFilledEvent,
+    SellOrderCompletedEvent
+)
 from hummingbot.strategy.dev_5_vwap import Dev5TwapTradeStrategy
 from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
+from test.mock.mock_paper_exchange import MockPaperExchange
+
+logging.basicConfig(level=logging.ERROR)
 
 
 class TWAPUnitTest(unittest.TestCase):
@@ -135,8 +146,10 @@ class TWAPUnitTest(unittest.TestCase):
                 limit_order.client_order_id,
                 base_currency,
                 quote_currency,
+                quote_currency,
                 base_currency_traded,
                 quote_currency_traded,
+                Decimal("0"),
                 OrderType.LIMIT
             ))
         else:
@@ -157,8 +170,10 @@ class TWAPUnitTest(unittest.TestCase):
                 limit_order.client_order_id,
                 base_currency,
                 quote_currency,
+                quote_currency,
                 base_currency_traded,
                 quote_currency_traded,
+                Decimal("0"),
                 OrderType.LIMIT
             ))
 

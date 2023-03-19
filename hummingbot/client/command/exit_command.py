@@ -20,17 +20,14 @@ class ExitCommand:
         if force is False and self._trading_required:
             success = await self._cancel_outstanding_orders()
             if not success:
-                self.notify('Wind down process terminated: Failed to cancel all outstanding orders. '
-                            '\nYou may need to manually cancel remaining orders by logging into your chosen exchanges'
-                            '\n\nTo force exit the app, enter "exit -f"')
+                self._notify('Wind down process terminated: Failed to cancel all outstanding orders. '
+                             '\nYou may need to manually cancel remaining orders by logging into your chosen exchanges'
+                             '\n\nTo force exit the app, enter "exit -f"')
                 return
             # Freeze screen 1 second for better UI
             await asyncio.sleep(1)
 
-        if self._gateway_monitor is not None:
-            self._gateway_monitor.stop()
-
-        self.notify("Winding down notifiers...")
+        self._notify("Winding down notifiers...")
         for notifier in self.notifiers:
             notifier.stop()
 

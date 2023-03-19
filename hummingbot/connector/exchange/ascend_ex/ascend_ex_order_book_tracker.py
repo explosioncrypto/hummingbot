@@ -6,6 +6,7 @@ import time
 from collections import defaultdict, deque
 from typing import Deque, Dict, List, Optional
 
+import aiohttp
 import hummingbot.connector.exchange.ascend_ex.ascend_ex_constants as constants
 from hummingbot.connector.exchange.ascend_ex.ascend_ex_api_order_book_data_source import AscendExAPIOrderBookDataSource
 from hummingbot.connector.exchange.ascend_ex.ascend_ex_order_book import AscendExOrderBook
@@ -14,7 +15,6 @@ from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.order_book_message import OrderBookMessageType
 from hummingbot.core.data_type.order_book_tracker import OrderBookTracker
 from hummingbot.core.utils.async_utils import safe_ensure_future
-from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.logger import HummingbotLogger
 
 
@@ -29,15 +29,13 @@ class AscendExOrderBookTracker(OrderBookTracker):
 
     def __init__(
         self,
-        api_factory: Optional[WebAssistantsFactory] = None,
+        shared_client: Optional[aiohttp.ClientSession] = None,
         throttler: Optional[AsyncThrottler] = None,
         trading_pairs: Optional[List[str]] = None,
     ):
         super().__init__(
             AscendExAPIOrderBookDataSource(
-                api_factory=api_factory,
-                throttler=throttler,
-                trading_pairs=trading_pairs
+                shared_client=shared_client, throttler=throttler, trading_pairs=trading_pairs
             ),
             trading_pairs,
         )
@@ -61,26 +59,14 @@ class AscendExOrderBookTracker(OrderBookTracker):
         return constants.EXCHANGE_NAME
 
     def start(self):
-        """
-        Starts the background task that connects to the exchange and listens to order book updates and trade events.
-        """
         super().start()
         self._order_book_stream_listener_task = safe_ensure_future(
             self._data_source.listen_for_subscriptions()
         )
 
     def stop(self):
-        """
-        Stops the background task
-        """
         self._order_book_stream_listener_task and self._order_book_stream_listener_task.cancel()
         super().stop()
-
-    async def _sleep(self, delay):
-        """
-        Function added only to facilitate patching the sleep in unit tests without affecting the asyncio module
-        """
-        await asyncio.sleep(delay)
 
     async def _track_single_book(self, trading_pair: str):
         """
@@ -136,4 +122,4 @@ class AscendExOrderBookTracker(OrderBookTracker):
                     exc_info=True,
                     app_warning_msg="Unexpected error processing order book messages. Retrying after 5 seconds.",
                 )
-                await self._sleep(5.0)
+                await asyncio.sleep(5.0)

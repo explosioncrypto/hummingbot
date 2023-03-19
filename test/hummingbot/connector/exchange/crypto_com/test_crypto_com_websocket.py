@@ -1,12 +1,13 @@
 import asyncio
 import json
 import unittest
+
 from typing import Awaitable, Optional
 from unittest.mock import AsyncMock, patch
 
 from hummingbot.connector.exchange.crypto_com.crypto_com_auth import CryptoComAuth
 from hummingbot.connector.exchange.crypto_com.crypto_com_websocket import CryptoComWebsocket
-from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
+from test.hummingbot.connector.network_mocking_assistant import NetworkMockingAssistant
 
 
 class CryptoComWebSocketUnitTests(unittest.TestCase):

@@ -5,7 +5,6 @@ from typing import Optional
 from hummingbot.client.config.config_methods import using_exchange
 from hummingbot.client.config.config_var import ConfigVar
 from hummingbot.connector.exchange.coinbase_pro import coinbase_pro_constants as CONSTANTS
-from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.web_assistant.connections.data_types import EndpointRESTRequest
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
@@ -55,8 +54,9 @@ class CoinbaseProRESTRequest(EndpointRESTRequest):
             raise ValueError("The endpoint must be specified if authentication is required.")
 
 
-def build_coinbase_pro_web_assistant_factory(auth: Optional['CoinbaseProAuth'] = None) -> WebAssistantsFactory:
+def build_coinbase_pro_web_assistant_factory(
+    auth: Optional['CoinbaseProAuth'] = None
+) -> WebAssistantsFactory:
     """The web-assistant's composition root."""
-    throttler = AsyncThrottler(rate_limits=[])
-    api_factory = WebAssistantsFactory(throttler=throttler, auth=auth)
+    api_factory = WebAssistantsFactory(auth=auth)
     return api_factory

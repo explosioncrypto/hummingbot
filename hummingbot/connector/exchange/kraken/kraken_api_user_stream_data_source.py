@@ -1,18 +1,26 @@
+#!/usr/bin/env python
+
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import (
+    Dict,
+    Optional,
+    Any
+)
 
-from hummingbot.connector.exchange.kraken import kraken_constants as CONSTANTS
-from hummingbot.connector.exchange.kraken.kraken_auth import KrakenAuth
-from hummingbot.connector.exchange.kraken.kraken_order_book import KrakenOrderBook
-from hummingbot.connector.exchange.kraken.kraken_utils import build_api_factory
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest, WSJSONRequest
+from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest, WSRequest
 from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
+from hummingbot.connector.exchange.kraken.kraken_auth import KrakenAuth
+from hummingbot.connector.exchange.kraken.kraken_order_book import KrakenOrderBook
+from hummingbot.connector.exchange.kraken.kraken_utils import (
+    build_api_factory
+)
+from hummingbot.connector.exchange.kraken import kraken_constants as CONSTANTS
 
 MESSAGE_TIMEOUT = 3.0
 PING_TIMEOUT = 5.0
@@ -33,7 +41,7 @@ class KrakenAPIUserStreamDataSource(UserStreamTrackerDataSource):
                  kraken_auth: KrakenAuth,
                  api_factory: Optional[WebAssistantsFactory] = None):
         self._throttler = throttler
-        self._api_factory = api_factory or build_api_factory(throttler=throttler)
+        self._api_factory = api_factory or build_api_factory()
         self._rest_assistant = None
         self._ws_assistant = None
         self._kraken_auth: KrakenAuth = kraken_auth
@@ -88,7 +96,7 @@ class KrakenAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
             return response_json["result"]["token"]
 
-    async def listen_for_user_stream(self, output: asyncio.Queue):
+    async def listen_for_user_stream(self, ev_loop: asyncio.AbstractEventLoop, output: asyncio.Queue):
         ws = None
         while True:
             try:
@@ -100,7 +108,7 @@ class KrakenAPIUserStreamDataSource(UserStreamTrackerDataSource):
                         self._current_auth_token = await self.get_auth_token()
 
                     for subscription_type in ["openOrders", "ownTrades"]:
-                        subscribe_request: WSJSONRequest = WSJSONRequest({
+                        subscribe_request: WSRequest = WSRequest({
                             "event": "subscribe",
                             "subscription": {
                                 "name": subscription_type,

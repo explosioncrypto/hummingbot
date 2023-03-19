@@ -1,9 +1,14 @@
 # distutils: language=c++
 import logging
 import os.path
+import time
 from decimal import Decimal
 from math import ceil, floor
-from typing import Dict, List, Optional
+from typing import (
+    List,
+    Dict,
+    Optional
+)
 
 import numpy as np
 import pandas as pd
@@ -63,7 +68,7 @@ cdef class AroonOscillatorStrategy(StrategyBase):
     OPTION_LOG_STATUS_REPORT = 1 << 5
     OPTION_LOG_ALL = 0x7fffffffffffffff
 
-    # These are exchanges where you're expected to expire orders instead of actively canceling them.
+    # These are exchanges where you're expected to expire orders instead of actively cancelling them.
     RADAR_RELAY_TYPE_EXCHANGES = {"radar_relay", "bamboo_relay"}
 
     @classmethod
@@ -588,8 +593,11 @@ cdef class AroonOscillatorStrategy(StrategyBase):
                     level = no_sells - lvl_sell
                     lvl_sell += 1
             spread = 0 if price == 0 else abs(order.price - price)/price
-            age = pd.Timestamp(order_age(order, self._current_timestamp), unit='s').strftime('%H:%M:%S')
-
+            age = "n/a"
+            # // indicates order is a paper order so 'n/a'. For real orders, calculate age.
+            if "//" not in order.client_order_id:
+                age = pd.Timestamp(int(time.time() - order.creation_timestamp/1e6),
+                                   unit='s').strftime('%H:%M:%S')
             amount_orig = "" if level is None else self._order_amount + ((level - 1) * self._order_level_amount)
             data.append([
                 "hang" if order.client_order_id in self._hanging_order_ids else level,
@@ -745,7 +753,7 @@ cdef class AroonOscillatorStrategy(StrategyBase):
             if self._is_debug:
                 self.dump_debug_variables()
             refresh_proposal = self.c_aged_order_refresh()
-            # Firstly restore canceled aged order
+            # Firstly restore cancelled aged order
             if refresh_proposal is not None:
                 self.c_execute_orders_proposal(refresh_proposal)
             if self.c_to_create_orders(proposal):
@@ -1138,7 +1146,7 @@ cdef class AroonOscillatorStrategy(StrategyBase):
         return True
 
     # Cancel active non hanging orders
-    # Return value: whether order cancelation is deferred.
+    # Return value: whether order cancellation is deferred.
     cdef c_cancel_active_orders(self, object proposal):
         if self._cancel_timestamp > self._current_timestamp:
             return
@@ -1164,7 +1172,7 @@ cdef class AroonOscillatorStrategy(StrategyBase):
             for order in active_orders:
                 self.c_cancel_order(self._market_info, order.client_order_id)
         else:
-            # self.logger().info(f"Not canceling active orders since difference between new order prices "
+            # self.logger().info(f"Not cancelling active orders since difference between new order prices "
             #                    f"and current order prices is within "
             #                    f"{self._order_refresh_tolerance_pct:.2%} order_refresh_tolerance_pct")
             self.set_timers()
@@ -1193,7 +1201,7 @@ cdef class AroonOscillatorStrategy(StrategyBase):
             negation = -1 if order.is_buy else 1
             if (negation * (order.price - price) / price) < self._cancel_order_spread_threshold:
                 self.logger().info(f"Order is below minimum spread ({self._cancel_order_spread_threshold})."
-                                   f" Canceling Order: ({'Buy' if order.is_buy else 'Sell'}) "
+                                   f" Cancelling Order: ({'Buy' if order.is_buy else 'Sell'}) "
                                    f"ID - {order.client_order_id}")
                 self.c_cancel_order(self._market_info, order.client_order_id)
 
@@ -1205,7 +1213,7 @@ cdef class AroonOscillatorStrategy(StrategyBase):
             list sells = []
 
         for order in active_orders:
-            age = order_age(order, self._current_timestamp)
+            age = order_age(order)
 
             # To prevent duplicating orders due to delay in receiving cancel response
             refresh_check = [o for o in active_orders if o.price == order.price
@@ -1296,7 +1304,7 @@ cdef class AroonOscillatorStrategy(StrategyBase):
     def notify_hb_app(self, msg: str):
         if self._hb_app_notification:
             from hummingbot.client.hummingbot_application import HummingbotApplication
-            HummingbotApplication.main_application().notify(msg)
+            HummingbotApplication.main_application()._notify(msg)
 
     def get_price_type(self, price_type_str: str) -> PriceType:
         if price_type_str == "mid_price":

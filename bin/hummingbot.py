@@ -1,24 +1,39 @@
 #!/usr/bin/env python
 
 import asyncio
+import errno
+import socket
 from typing import Coroutine, List
-from weakref import ReferenceType, ref
+from weakref import ref, ReferenceType
 
 import path_util  # noqa: F401
-
-from bin.docker_connection import fork_and_start
 from hummingbot import chdir_to_data_directory, init_logging
-from hummingbot.client.config.config_helpers import create_yml_files, read_system_configs_from_yml, write_config_to_yml
+from hummingbot.client.config.config_helpers import (
+    create_yml_files,
+    read_system_configs_from_yml,
+    write_config_to_yml,
+)
 from hummingbot.client.config.global_config_map import global_config_map
 from hummingbot.client.hummingbot_application import HummingbotApplication
 from hummingbot.client.settings import AllConnectorSettings
 from hummingbot.client.ui import login_prompt
-from hummingbot.client.ui.style import load_style
 from hummingbot.core.event.event_listener import EventListener
 from hummingbot.core.event.events import HummingbotUIEvent
-from hummingbot.core.gateway import start_existing_gateway_container
-from hummingbot.core.utils import detect_available_port
 from hummingbot.core.utils.async_utils import safe_gather
+
+
+def detect_available_port(starting_port: int) -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        current_port: int = starting_port
+        while current_port < 65535:
+            try:
+                s.bind(("127.0.0.1", current_port))
+                break
+            except OSError as e:
+                if e.errno == errno.EADDRINUSE:
+                    current_port += 1
+                    continue
+        return current_port
 
 
 class UIStartListener(EventListener):
@@ -41,7 +56,7 @@ class UIStartListener(EventListener):
             hb.start(global_config_map.get("log_level").value)
 
 
-async def main_async():
+async def main():
     await create_yml_files()
 
     # This init_logging() call is important, to skip over the missing config warnings.
@@ -58,7 +73,7 @@ async def main_async():
     start_listener: UIStartListener = UIStartListener(hb)
     hb.app.add_listener(HummingbotUIEvent.Start, start_listener)
 
-    tasks: List[Coroutine] = [hb.run(), start_existing_gateway_container()]
+    tasks: List[Coroutine] = [hb.run()]
     if global_config_map.get("debug_console").value:
         if not hasattr(__builtins__, "help"):
             import _sitebuiltins
@@ -70,13 +85,8 @@ async def main_async():
     await safe_gather(*tasks)
 
 
-def main():
-    chdir_to_data_directory()
-    ev_loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
-    ev_loop.run_until_complete(read_system_configs_from_yml())
-    if login_prompt(style=load_style()):
-        ev_loop.run_until_complete(main_async())
-
-
 if __name__ == "__main__":
-    fork_and_start(main)
+    chdir_to_data_directory()
+    if login_prompt():
+        ev_loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        ev_loop.run_until_complete(main())

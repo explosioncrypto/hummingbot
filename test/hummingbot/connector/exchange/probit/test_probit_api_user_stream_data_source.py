@@ -3,14 +3,16 @@ import json
 import unittest
 from collections import Awaitable
 from typing import Optional
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch, AsyncMock
 
 from aiohttp import WSMsgType
 
-from hummingbot.connector.exchange.probit import probit_constants as CONSTANTS
-from hummingbot.connector.exchange.probit.probit_api_user_stream_data_source import ProbitAPIUserStreamDataSource
+from hummingbot.connector.exchange.probit.probit_api_user_stream_data_source import (
+    ProbitAPIUserStreamDataSource
+)
 from hummingbot.connector.exchange.probit.probit_auth import ProbitAuth
-from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
+from hummingbot.connector.exchange.probit import probit_constants as CONSTANTS
+from test.hummingbot.connector.network_mocking_assistant import NetworkMockingAssistant
 
 
 class ProbitAPIUserStreamDataSourceTest(unittest.TestCase):
@@ -81,7 +83,7 @@ class ProbitAPIUserStreamDataSourceTest(unittest.TestCase):
 
         output_queue = asyncio.Queue()
         self.async_task = self.ev_loop.create_task(
-            self.data_source.listen_for_user_stream(output_queue)
+            self.data_source.listen_for_user_stream(self.ev_loop, output_queue)
         )
 
         self.mocking_assistant.run_until_all_json_messages_delivered(ws_connect_mock.return_value)
@@ -117,7 +119,7 @@ class ProbitAPIUserStreamDataSourceTest(unittest.TestCase):
 
         ws_connect_mock.side_effect = Exception
         self.async_task = self.ev_loop.create_task(
-            self.data_source.listen_for_user_stream(asyncio.Queue())
+            self.data_source.listen_for_user_stream(self.ev_loop, asyncio.Queue())
         )
 
         self.async_run_with_timeout(called_event.wait())
@@ -133,7 +135,7 @@ class ProbitAPIUserStreamDataSourceTest(unittest.TestCase):
 
         with self.assertRaises(asyncio.CancelledError):
             self.async_run_with_timeout(
-                self.data_source.listen_for_user_stream(asyncio.Queue())
+                self.data_source.listen_for_user_stream(self.ev_loop, asyncio.Queue())
             )
 
     @patch("aiohttp.client.ClientSession.ws_connect", new_callable=AsyncMock)
@@ -157,7 +159,7 @@ class ProbitAPIUserStreamDataSourceTest(unittest.TestCase):
         )
         output_queue = asyncio.Queue()
         self.async_task = self.ev_loop.create_task(
-            self.data_source.listen_for_user_stream(output_queue)
+            self.data_source.listen_for_user_stream(self.ev_loop, output_queue)
         )
 
         self.mocking_assistant.run_until_all_aiohttp_messages_delivered(ws_connect_mock.return_value)

@@ -1,10 +1,8 @@
 import asyncio
 import time
-from json import JSONDecodeError
-from typing import Any, Dict, Mapping, Optional
+from typing import Optional
 
 import aiohttp
-
 from hummingbot.core.web_assistant.connections.data_types import WSRequest, WSResponse
 
 
@@ -29,12 +27,10 @@ class WSConnection:
         ws_url: str,
         ping_timeout: float = 10,
         message_timeout: Optional[float] = None,
-        ws_headers: Optional[Dict] = {},
     ):
         self._ensure_not_connected()
         self._connection = await self._client_session.ws_connect(
             ws_url,
-            headers=ws_headers,
             autoping=False,
             heartbeat=ping_timeout,
         )
@@ -49,7 +45,7 @@ class WSConnection:
 
     async def send(self, request: WSRequest):
         self._ensure_connected()
-        await request.send_with_connection(connection=self)
+        await self._connection.send_json(request.payload)
 
     async def ping(self):
         await self._connection.ping()
@@ -116,20 +112,11 @@ class WSConnection:
     def _update_last_recv_time(self, _: aiohttp.WSMessage):
         self._last_recv_time = time.time()
 
-    async def _send_json(self, payload: Mapping[str, Any]):
-        await self._connection.send_json(payload)
-
-    async def _send_plain_text(self, payload: str):
-        await self._connection.send_str(payload)
-
     @staticmethod
     def _build_resp(msg: aiohttp.WSMessage) -> WSResponse:
         if msg.type == aiohttp.WSMsgType.BINARY:
             data = msg.data
         else:
-            try:
-                data = msg.json()
-            except JSONDecodeError:
-                data = msg.data
+            data = msg.json()
         response = WSResponse(data)
         return response

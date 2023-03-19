@@ -5,7 +5,7 @@
 .PHONY: development-diff-cover
 
 test:
-	coverage run -m nose --exclude-dir="test/connector" --exclude-dir="test/debug" --exclude-dir="test/mock"
+	coverage run -m nose test.hummingbot
 
 run_coverage: test
 	coverage report

@@ -1,8 +1,6 @@
 from typing import Dict
 from decimal import Decimal
 
-from hummingbot.core.gateway.utils import unwrap_token_symbol
-
 
 def find_rate(prices: Dict[str, Decimal], pair: str) -> Decimal:
     '''
@@ -18,8 +16,6 @@ def find_rate(prices: Dict[str, Decimal], pair: str) -> Decimal:
     if pair in prices:
         return prices[pair]
     base, quote = pair.split("-")
-    base = unwrap_token_symbol(base)
-    quote = unwrap_token_symbol(quote)
     if base == quote:
         return Decimal("1")
     reverse_pair = f"{quote}-{base}"

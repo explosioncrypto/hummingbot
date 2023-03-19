@@ -1,4 +1,3 @@
-import asyncio
 import time
 from decimal import Decimal
 from typing import Dict, List, Set, Tuple
@@ -8,7 +7,6 @@ from hummingbot.client.config.trade_fee_schema_loader import TradeFeeSchemaLoade
 from hummingbot.connector.connector_metrics_collector import TradeVolumeMetricCollector
 from hummingbot.connector.in_flight_order_base import InFlightOrderBase
 from hummingbot.connector.utils import split_hb_trading_pair, TradeFillOrderDetails
-from hummingbot.connector.constants import NaN, s_decimal_NaN, s_decimal_0
 from hummingbot.core.clock cimport Clock
 from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.common import OrderType, TradeType
@@ -17,6 +15,10 @@ from hummingbot.core.event.events import MarketEvent, OrderFilledEvent
 from hummingbot.core.network_iterator import NetworkIterator
 from hummingbot.core.rate_oracle.rate_oracle import RateOracle
 from hummingbot.core.utils.estimate_fee import estimate_fee
+
+NaN = float("nan")
+s_decimal_NaN = Decimal("nan")
+s_decimal_0 = Decimal(0)
 
 
 cdef class ConnectorBase(NetworkIterator):
@@ -230,7 +232,7 @@ cdef class ConnectorBase(NetworkIterator):
         Cancels all in-flight orders and waits for cancellation results.
         Used by bot's top level stop and exit commands (cancelling outstanding orders on exit)
         :param timeout_seconds: The timeout at which the operation will be canceled.
-        :returns List of CancellationResult which indicates whether each order is successfully canceled.
+        :returns List of CancellationResult which indicates whether each order is successfully cancelled.
         """
         raise NotImplementedError
 
@@ -340,7 +342,7 @@ cdef class ConnectorBase(NetworkIterator):
 
     def get_available_balance(self, currency: str) -> Decimal:
         """
-        Return available balance for a given currency. The function accounts for balance changes since the last time
+        Return availalbe balance for a given currency. The function accounts for balance changes since the last time
         the snapshot was taken if no real time balance update. The function applied limit if configured.
         :param currency: The currency (token) name
         :returns: Balance available for trading for the specified currency
@@ -458,29 +460,9 @@ cdef class ConnectorBase(NetworkIterator):
             self._trade_fee_schema = TradeFeeSchemaLoader.configured_schema_for_exchange(exchange_name=self.name)
         return self._trade_fee_schema
 
-    async def all_trading_pairs(self) -> List[str]:
-        """
-        List of all trading pairs supported by the connector
-
-        :return: List of trading pair symbols in the Hummingbot format
-        """
-        raise NotImplementedError
-
-    async def _update_balances(self):
-        """
-        Update local balances requesting the latest information from the exchange.
-        """
-        raise NotImplementedError
-
     def _time(self) -> float:
         """
         Method created to enable tests to mock the machine time
         :return: The machine time (time.time())
         """
         return time.time()
-
-    async def _sleep(self, delay: float):
-        """
-        Method created to enable tests to prevent processes from sleeping
-        """
-        await asyncio.sleep(delay)

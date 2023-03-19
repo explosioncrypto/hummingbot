@@ -1,19 +1,30 @@
+#!/usr/bin/env python
+
 import asyncio
 import logging
-from collections import defaultdict
-from typing import Any, Dict, List, Optional
+
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
+
+from collections import defaultdict
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+)
+
+
 from hummingbot.connector.exchange.huobi.huobi_order_book import HuobiOrderBook
 from hummingbot.connector.exchange.huobi.huobi_utils import (
-    build_api_factory,
     convert_from_exchange_trading_pair,
     convert_to_exchange_trading_pair,
+    build_api_factory,
 )
 from hummingbot.core.data_type.order_book import OrderBook
 from hummingbot.core.data_type.order_book_message import OrderBookMessage
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest, RESTResponse, WSJSONRequest
+from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest, RESTResponse, WSRequest
 from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
@@ -129,11 +140,11 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
     async def _subscribe_channels(self, ws: WSAssistant):
         try:
             for trading_pair in self._trading_pairs:
-                subscribe_orderbook_request: WSJSONRequest = WSJSONRequest({
+                subscribe_orderbook_request: WSRequest = WSRequest({
                     "sub": f"market.{convert_to_exchange_trading_pair(trading_pair)}.depth.step0",
                     "id": convert_to_exchange_trading_pair(trading_pair)
                 })
-                subscribe_trade_request: WSJSONRequest = WSJSONRequest({
+                subscribe_trade_request: WSRequest = WSRequest({
                     "sub": f"market.{convert_to_exchange_trading_pair(trading_pair)}.trade.detail",
                     "id": convert_to_exchange_trading_pair(trading_pair)
                 })
@@ -161,7 +172,7 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
                     if "subbed" in data:
                         continue
                     if "ping" in data:
-                        ping_request = WSJSONRequest(payload={
+                        ping_request = WSRequest(payload={
                             "pong": data["ping"]
                         })
                         await ws.send(request=ping_request)

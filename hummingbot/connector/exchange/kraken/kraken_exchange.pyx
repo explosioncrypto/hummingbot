@@ -4,14 +4,19 @@ import logging
 import re
 from collections import defaultdict
 from decimal import Decimal
-from typing import Any, AsyncIterable, Dict, List, Optional
+from typing import (
+    Any,
+    AsyncIterable,
+    Dict,
+    List,
+    Optional,
+)
 
 from async_timeout import timeout
 from libc.stdint cimport int32_t, int64_t
 
 from hummingbot.client.config.global_config_map import global_config_map
 from hummingbot.connector.exchange.kraken import kraken_constants as CONSTANTS
-from hummingbot.connector.exchange.kraken.kraken_api_order_book_data_source import KrakenAPIOrderBookDataSource
 from hummingbot.connector.exchange.kraken.kraken_auth import KrakenAuth
 from hummingbot.connector.exchange.kraken.kraken_constants import KrakenAPITier
 from hummingbot.connector.exchange.kraken.kraken_in_flight_order import (
@@ -52,7 +57,10 @@ from hummingbot.core.event.events import (
 )
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.core.utils.async_call_scheduler import AsyncCallScheduler
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.core.utils.async_utils import (
+    safe_ensure_future,
+    safe_gather,
+)
 from hummingbot.core.utils.tracking_nonce import get_tracking_nonce
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest
 from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
@@ -80,7 +88,7 @@ cdef class KrakenExchange(ExchangeBase):
     MARKET_RECEIVED_ASSET_EVENT_TAG = MarketEvent.ReceivedAsset.value
     MARKET_BUY_ORDER_COMPLETED_EVENT_TAG = MarketEvent.BuyOrderCompleted.value
     MARKET_SELL_ORDER_COMPLETED_EVENT_TAG = MarketEvent.SellOrderCompleted.value
-    MARKET_ORDER_CANCELED_EVENT_TAG = MarketEvent.OrderCancelled.value
+    MARKET_ORDER_CANCELLED_EVENT_TAG = MarketEvent.OrderCancelled.value
     MARKET_TRANSACTION_FAILURE_EVENT_TAG = MarketEvent.TransactionFailure.value
     MARKET_ORDER_FAILURE_EVENT_TAG = MarketEvent.OrderFailure.value
     MARKET_ORDER_FILLED_EVENT_TAG = MarketEvent.OrderFilled.value
@@ -108,11 +116,11 @@ cdef class KrakenExchange(ExchangeBase):
 
         super().__init__()
         self._trading_required = trading_required
+        self._api_factory = build_api_factory()
+        self._rest_assistant = None
         self._kraken_api_tier = KrakenAPITier(kraken_api_tier.upper())
         self._throttler = self._build_async_throttler(api_tier=self._kraken_api_tier)
-        self._api_factory = build_api_factory(throttler=self._throttler)
-        self._rest_assistant = None
-        self._set_order_book_tracker(KrakenOrderBookTracker(trading_pairs=trading_pairs, throttler=self._throttler))
+        self._order_book_tracker = KrakenOrderBookTracker(trading_pairs=trading_pairs, throttler=self._throttler)
         self._kraken_auth = KrakenAuth(kraken_api_key, kraken_secret_key)
         self._user_stream_tracker = KrakenUserStreamTracker(self._throttler, self._kraken_auth, self._api_factory)
         self._ev_loop = asyncio.get_event_loop()
@@ -141,7 +149,7 @@ cdef class KrakenExchange(ExchangeBase):
 
     @property
     def order_books(self) -> Dict[str, OrderBook]:
-        return self.order_book_tracker.order_books
+        return self._order_book_tracker.order_books
 
     @property
     def kraken_auth(self) -> KrakenAuth:
@@ -399,8 +407,11 @@ cdef class KrakenExchange(ExchangeBase):
                                                                         client_order_id,
                                                                         tracked_order.base_asset,
                                                                         tracked_order.quote_asset,
+                                                                        (tracked_order.fee_asset
+                                                                         or tracked_order.quote_asset),
                                                                         executed_amount_base,
                                                                         executed_amount_quote,
+                                                                        update["fee"],
                                                                         tracked_order.order_type))
                         else:
                             self.logger().info(f"The market sell order {client_order_id} has completed "
@@ -410,15 +421,18 @@ cdef class KrakenExchange(ExchangeBase):
                                                                          client_order_id,
                                                                          tracked_order.base_asset,
                                                                          tracked_order.quote_asset,
+                                                                         (tracked_order.fee_asset
+                                                                          or tracked_order.quote_asset),
                                                                          executed_amount_base,
                                                                          executed_amount_quote,
+                                                                         update["fee"],
                                                                          tracked_order.order_type))
                     else:
                         # check if its a cancelled order
                         # if its a cancelled order, issue cancel and stop tracking order
                         if tracked_order.is_cancelled:
-                            self.logger().info(f"Successfully canceled order {client_order_id}.")
-                            self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                            self.logger().info(f"Successfully cancelled order {client_order_id}.")
+                            self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                                  OrderCancelledEvent(
                                                      self._current_timestamp,
                                                      client_order_id))
@@ -505,8 +519,11 @@ cdef class KrakenExchange(ExchangeBase):
                                                                                     tracked_order.client_order_id,
                                                                                     tracked_order.base_asset,
                                                                                     tracked_order.quote_asset,
+                                                                                    (tracked_order.fee_asset
+                                                                                        or tracked_order.quote_asset),
                                                                                     tracked_order.executed_amount_base,
                                                                                     tracked_order.executed_amount_quote,
+                                                                                    tracked_order.fee_paid,
                                                                                     tracked_order.order_type))
                                     else:
                                         self.logger().info(f"The market sell order {tracked_order.client_order_id} has completed "
@@ -516,8 +533,11 @@ cdef class KrakenExchange(ExchangeBase):
                                                                                      tracked_order.client_order_id,
                                                                                      tracked_order.base_asset,
                                                                                      tracked_order.quote_asset,
+                                                                                     (tracked_order.fee_asset
+                                                                                      or tracked_order.quote_asset),
                                                                                      tracked_order.executed_amount_base,
                                                                                      tracked_order.executed_amount_quote,
+                                                                                     tracked_order.fee_paid,
                                                                                      tracked_order.order_type))
                                 else:
                                     # check if its a cancelled order
@@ -525,8 +545,8 @@ cdef class KrakenExchange(ExchangeBase):
                                     # if present in in flight orders issue cancel and stop tracking order
                                     if tracked_order.is_cancelled:
                                         if tracked_order.client_order_id in self._in_flight_orders:
-                                            self.logger().info(f"Successfully canceled order {tracked_order.client_order_id}.")
-                                            self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                                            self.logger().info(f"Successfully cancelled order {tracked_order.client_order_id}.")
+                                            self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                                                  OrderCancelledEvent(self._current_timestamp,
                                                                                      tracked_order.client_order_id))
                                     else:
@@ -581,7 +601,7 @@ cdef class KrakenExchange(ExchangeBase):
     @property
     def status_dict(self) -> Dict[str, bool]:
         return {
-            "order_books_initialized": self.order_book_tracker.ready,
+            "order_books_initialized": self._order_book_tracker.ready,
             "account_balance": len(self._account_balances) > 0 if self._trading_required else True,
             "trading_rule_initialized": len(self._trading_rules) > 0,
         }
@@ -600,7 +620,7 @@ cdef class KrakenExchange(ExchangeBase):
 
     async def start_network(self):
         self._stop_network()
-        self.order_book_tracker.start()
+        self._order_book_tracker.start()
         self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
         if self._trading_required:
             self._status_polling_task = safe_ensure_future(self._status_polling_loop())
@@ -608,7 +628,7 @@ cdef class KrakenExchange(ExchangeBase):
             self._user_stream_event_listener_task = safe_ensure_future(self._user_stream_event_listener())
 
     def _stop_network(self):
-        self.order_book_tracker.stop()
+        self._order_book_tracker.stop()
         if self._status_polling_task is not None:
             self._status_polling_task.cancel()
         if self._user_stream_tracker_task is not None:
@@ -975,9 +995,9 @@ cdef class KrakenExchange(ExchangeBase):
                                                                is_auth_required=True)
 
             if isinstance(cancel_result, dict) and (cancel_result.get("count") == 1 or cancel_result.get("error") is not None):
-                self.logger().info(f"Successfully canceled order {order_id}.")
+                self.logger().info(f"Successfully cancelled order {order_id}.")
                 self.c_stop_tracking_order(order_id)
-                self.c_trigger_event(self.MARKET_ORDER_CANCELED_EVENT_TAG,
+                self.c_trigger_event(self.MARKET_ORDER_CANCELLED_EVENT_TAG,
                                      OrderCancelledEvent(self._current_timestamp, order_id))
             return {
                 "origClientOrderId": order_id
@@ -985,7 +1005,7 @@ cdef class KrakenExchange(ExchangeBase):
         except KrakenInFlightOrderNotCreated:
             raise
         except Exception as e:
-            self.logger().warning(f"Error canceling order on Kraken",
+            self.logger().warning(f"Error cancelling order on Kraken",
                                   exc_info=True)
 
     cdef c_cancel(self, str trading_pair, str order_id):
@@ -1010,7 +1030,7 @@ cdef class KrakenExchange(ExchangeBase):
                         successful_cancellations.append(CancellationResult(client_order_id, True))
         except Exception:
             self.logger().network(
-                f"Unexpected error canceling orders.",
+                f"Unexpected error cancelling orders.",
                 exc_info=True,
                 app_warning_msg="Failed to cancel order with Kraken. Check API key and network connection."
             )
@@ -1020,7 +1040,7 @@ cdef class KrakenExchange(ExchangeBase):
 
     cdef OrderBook c_get_order_book(self, str trading_pair):
         cdef:
-            dict order_books = self.order_book_tracker.order_books
+            dict order_books = self._order_book_tracker.order_books
 
         if trading_pair not in order_books:
             raise ValueError(f"No order book exists for '{trading_pair}'.")
@@ -1129,13 +1149,3 @@ cdef class KrakenExchange(ExchangeBase):
             )
         throttler = AsyncThrottler(build_rate_limits_by_tier(api_tier))
         return throttler
-
-    async def all_trading_pairs(self) -> List[str]:
-        # This method should be removed and instead we should implement _initialize_trading_pair_symbol_map
-        return await KrakenAPIOrderBookDataSource.fetch_trading_pairs(throttler=self._throttler)
-
-    async def get_last_traded_prices(self, trading_pairs: List[str]) -> Dict[str, float]:
-        # This method should be removed and instead we should implement _get_last_traded_price
-        return await KrakenAPIOrderBookDataSource.get_last_traded_prices(
-            trading_pairs=trading_pairs,
-            throttler=self._throttler)
