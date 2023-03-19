@@ -29,15 +29,11 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        bids = [[float(bid["price"]), float(bid["quantity"])]
-                for bid in msg["bids"]]
-        asks = [[float(ask["price"]), float(ask["quantity"])]
-                for ask in msg["asks"]]
         content = {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["symbol"]),
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["trading_pair"]),
             "update_id": msg["timestamp"],
-            "bids": bids,
-            "asks": asks
+            "bids": msg["bids"],
+            "asks": msg["asks"]
         }
         return OrderBookMessage(
             OrderBookMessageType.SNAPSHOT,
@@ -49,19 +45,19 @@ class VitexOrderBook(OrderBook):
     def trade_message_from_exchange(
         cls,
         msg: Dict[str, any],
-        data: Dict[str, any],
         timestamp: Optional[float]=None,
         metadata: Optional[Dict]=None
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
+        data = msg["data"][0]
         content = {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(data.get("s")),
-            "trade_type": VitexAPI.convert_trade_type(data.get("side")),
-            "trade_id": data.get("id"),
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(data["s"]),
+            "trade_type": VitexAPI.convert_trade_type(data["side"]),
+            "trade_id": data["id"],
             "update_id": msg["timestamp"],
-            "price": data.get("p"),
-            "amount": data.get("a")
+            "price": data["p"],
+            "amount": data["a"]
         }
         return OrderBookMessage(
             OrderBookMessageType.TRADE,
@@ -79,15 +75,12 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        bids = [[float(bid["price"]), float(bid["quantity"])]
-                for bid in data.get("bids", [])]
-        asks = [[float(ask["price"]), float(ask["quantity"])]
-                for ask in data.get("asks", [])]
+        data = msg["data"][0]
         content = {
-            "trading_pair": msg["symbol"],
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(data["s"]),
             "update_id": msg["timestamp"],
-            "bids": bids,
-            "asks": asks
+            "bids": data["bids"],
+            "asks": data["asks"]
         }
         return OrderBookMessage(
             OrderBookMessageType.DIFF,
