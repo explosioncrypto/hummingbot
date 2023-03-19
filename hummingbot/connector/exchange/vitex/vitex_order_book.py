@@ -51,7 +51,7 @@ class VitexOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
         content = {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["data"]["s"]),
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["topic"].split(".")[1]),
             "trade_type": VitexAPI.convert_trade_type(msg["data"]["side"]),
             "trade_id": msg["data"]["id"],
             "update_id": msg["timestamp"],
@@ -80,7 +80,7 @@ class VitexOrderBook(OrderBook):
             "asks": msg["data"]["asks"]
         }
         return OrderBookMessage(
-            OrderBookMessageType.DIFF,
+            OrderBookMessageType.SNAPSHOT,
             content,
             timestamp=timestamp
         )
