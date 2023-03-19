@@ -52,12 +52,12 @@ class VitexOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
         content = {
-            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(data.get("s")),
-            "trade_type": VitexAPI.convert_trade_type(data.get("side")),
-            "trade_id": data.get("id"),
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["data"]["s"]),
+            "trade_type": VitexAPI.convert_trade_type(msg["data"]["side"]),
+            "trade_id": msg["data"]["id"],
             "update_id": msg["timestamp"],
-            "price": data.get("p"),
-            "amount": data.get("a")
+            "price": msg["data"]["p"],
+            "amount": msg["data"]["a"]
         }
         return OrderBookMessage(
             OrderBookMessageType.TRADE,
@@ -75,15 +75,11 @@ class VitexOrderBook(OrderBook):
     ) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
-        bids = [[float(bid["price"]), float(bid["quantity"])]
-                for bid in data.get("bids", [])]
-        asks = [[float(ask["price"]), float(ask["quantity"])]
-                for ask in data.get("asks", [])]
         content = {
-            "trading_pair": msg["symbol"],
+            "trading_pair": VitexAPI.convert_from_exchange_trading_pair(msg["topic"].split(".")[1]),
             "update_id": msg["timestamp"],
-            "bids": bids,
-            "asks": asks
+            "bids": msg["data"]["bids"],
+            "asks": msg["data"]["asks"]
         }
         return OrderBookMessage(
             OrderBookMessageType.DIFF,
