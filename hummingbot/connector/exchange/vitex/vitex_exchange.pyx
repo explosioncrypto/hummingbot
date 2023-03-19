@@ -10,7 +10,7 @@ from typing import (
     AsyncIterable,
     Dict,
     List,
-    Optional
+    Optional,
 )
 
 from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
