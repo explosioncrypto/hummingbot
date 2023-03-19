@@ -149,6 +149,10 @@ wazirx_secret_key: null
 mexc_api_key: null
 mexc_secret_key: null
 
+vitex_vite_address: null
+vitex_api_key: null
+vitex_secret_key: null
+
 # Kill switch
 kill_switch_enabled: null
 # The rate of performance at which you would want the bot to stop trading (-20 = 20%)
