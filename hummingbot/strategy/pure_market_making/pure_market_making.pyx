@@ -1127,6 +1127,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             f"({limit_order_record.quantity} {limit_order_record.base_currency} @ "
             f"{limit_order_record.price} {limit_order_record.quote_currency}) has been completely filled."
         )
+        boughtprice = int(str(limit_order_record.price * 1000000000000)[:4])
         self.notify_hb_app(
             f"Bought {round(limit_order_record.quantity, 1)} @ "
             f"{boughtprice}"
@@ -1167,6 +1168,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             f"({limit_order_record.quantity} {limit_order_record.base_currency} @ "
             f"{limit_order_record.price} {limit_order_record.quote_currency}) has been completely filled."
         )
+        soldprice = int(str(limit_order_record.price * 1000000000000)[:4])
         self.notify_hb_app(
             f"Sold {round(limit_order_record.quantity, 1)} @ "
             f"{soldprice}"
