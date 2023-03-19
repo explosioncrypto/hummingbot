@@ -282,16 +282,14 @@ cdef class VitexExchange(ExchangeBase):
                           object order_type,
                           object order_side,
                           object amount,
-                          object price,
-                          object is_maker = None):
-
+                          object price):
         is_maker = order_type is OrderType.LIMIT_MAKER
-        return AddedToCostTradeFee(percent=self.estimate_fee_pct(is_maker))
+        return estimate_fee("vitex", is_maker)
 
     async def _update_trading_rules(self):
         cdef:
             # The poll interval for trade rules is 60 seconds.
-            int64_t last_tick = <int64_t> (self._last_timestamp / 60.0)
+            int64_t last_tick = <int64_t> (self._lasttimestamp / 60.0)
             int64_t current_tick = <int64_t> (self._current_timestamp / 60.0)
         if current_tick > last_tick or len(self._trading_rules) < 1:
             trade_info = await self._vitex_api.api_request("GET", "/markets")
@@ -841,8 +839,7 @@ cdef class VitexExchange(ExchangeBase):
                 order_type: OrderType,
                 order_side: TradeType,
                 amount: Decimal,
-                price: Decimal = s_decimal_NaN,
-                is_maker: Optional[bool] = None) -> AddedToCostTradeFee:
+                price: Decimal = s_decimal_NaN) -> AddedToCostTradeFee:
         return self.c_get_fee(base_currency, quote_currency, order_type, order_side, amount, price)
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
