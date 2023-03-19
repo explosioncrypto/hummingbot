@@ -282,9 +282,10 @@ cdef class VitexExchange(ExchangeBase):
                           object order_type,
                           object order_side,
                           object amount,
-                          object price):
+                          object price,
+                          object is_maker = None):
         is_maker = order_type is OrderType.LIMIT_MAKER
-        return estimate_fee("vitex", is_maker)
+        return AddedToCostTradeFee(percent=self.estimate_fee_pct(is_maker))
 
     async def _update_trading_rules(self):
         cdef:
@@ -842,7 +843,8 @@ cdef class VitexExchange(ExchangeBase):
                 order_type: OrderType,
                 order_side: TradeType,
                 amount: Decimal,
-                price: Decimal = s_decimal_NaN) -> AddedToCostTradeFee:
+                price: Decimal = s_decimal_NaN,
+                is_maker: Optional[bool] = None) -> AddedToCostTradeFee:
         return self.c_get_fee(base_currency, quote_currency, order_type, order_side, amount, price)
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
