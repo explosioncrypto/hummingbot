@@ -13,6 +13,7 @@ from typing import (
     Optional
 )
 
+from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
 from hummingbot.connector.exchange.vitex.vitex_api import VitexAPI, VitexAPIError
 from hummingbot.core.clock cimport Clock
 from hummingbot.core.data_type.cancellation_result import CancellationResult
