@@ -253,30 +253,6 @@ cdef class VitexExchange(ExchangeBase):
             del self._account_available_balances[asset_name]
             del self._account_balances[asset_name]
 
-    async def _update_trade_fees(self):
-        cdef:
-            double current_timestamp = self._current_timestamp
-        if current_timestamp - self._last_update_trade_fees_timestamp > 60.0 * 60.0 or len(self._trade_fees) < 1:
-            try:
-
-                path = "/markets"
-                markets = await self._vitex_api.api_request("GET", path)
-                for market in markets:
-                    pair = VitexAPI.convert_from_exchange_trading_pair(market["symbol"])
-                    # TODO:
-                    maker_fee = 0.1
-                    taker_fee = 0.1
-
-                    self._trade_fees[pair] = (Decimal(maker_fee), Decimal(taker_fee))
-                self._last_update_trade_fees_timestamp = current_timestamp
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                self.logger().network("Error fetching ViteX trade fees.", exc_info=True,
-                                      app_warning_msg=f"Could not fetch ViteX trading fees. "
-                                                      f"Check network connection.")
-                raise
-
     cdef object c_get_fee(self,
                           str base_currency,
                           str quote_currency,
