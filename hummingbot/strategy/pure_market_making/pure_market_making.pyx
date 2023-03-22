@@ -960,7 +960,7 @@ cdef class PureMarketMakingStrategy(StrategyBase):
                 top_bid_price
             )
             # Get the price above the top bid
-            price_above_bid = (ceil(top_bid_price / price_quantum) + 1) * price_quantum
+            price_above_bid = (ceil(top_bid_price / price_quantum) + 2) * price_quantum
 
             # If the price_above_bid is lower than the price suggested by the top pricing proposal,
             # lower the price and from there apply the order_level_spread to each order in the next levels
