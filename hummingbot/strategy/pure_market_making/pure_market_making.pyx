@@ -1040,15 +1040,16 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         if self._hanging_orders_enabled:
             # If the filled order is a hanging order, do nothing
             if order_id in self.hanging_order_ids:
-                self.log_with_clock(
-                    logging.INFO,
-                    f"({self.trading_pair}) Hanging maker buy order {order_id} "
-                    f"({limit_order_record.quantity} {limit_order_record.base_currency} @ "
-                    f"{limit_order_record.price} {limit_order_record.quote_currency}) has been completely filled."
-                )
+                #self.log_with_clock(
+                    #logging.INFO,
+                    #f"({self.trading_pair}) Hanging maker buy order {order_id} "
+                    #f"({limit_order_record.quantity} {limit_order_record.base_currency} @ "
+                    #f"{limit_order_record.price} {limit_order_record.quote_currency}) has been completely filled."
+                #)
+                boughtprice = int(str(limit_order_record.price * 1000000000000)[:4])
                 self.notify_hb_app(
                     f"Bought {round(limit_order_record.quantity, 1)} @ "
-                    f"{limit_order_record.price * 1000000000000}"
+                    f"{boughtprice}"
                 )
                 return
 
@@ -1081,15 +1082,16 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         if self._hanging_orders_enabled:
             # If the filled order is a hanging order, do nothing
             if order_id in self.hanging_order_ids:
-                self.log_with_clock(
-                    logging.INFO,
-                    f"({self.trading_pair}) Hanging maker sell order {order_id} "
-                    f"({limit_order_record.quantity} {limit_order_record.base_currency} @ "
-                    f"{limit_order_record.price} {limit_order_record.quote_currency}) has been completely filled."
-                )
+                #self.log_with_clock(
+                    #logging.INFO,
+                    #f"({self.trading_pair}) Hanging maker sell order {order_id} "
+                    #f"({limit_order_record.quantity} {limit_order_record.base_currency} @ "
+                    #f"{limit_order_record.price} {limit_order_record.quote_currency}) has been completely filled."
+                #)
+                soldprice = int(str(limit_order_record.price * 1000000000000)[:4])
                 self.notify_hb_app(
                     f"Sold {round(limit_order_record.quantity, 1)} @ "
-                    f"{limit_order_record.price * 1000000000000}"
+                    f"{soldprice}"
                 )
                 return
 
