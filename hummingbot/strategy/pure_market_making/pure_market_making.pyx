@@ -1037,22 +1037,6 @@ cdef class PureMarketMakingStrategy(StrategyBase):
             return
         active_sell_ids = [x.client_order_id for x in self.active_orders if not x.is_buy]
 
-        if self._hanging_orders_enabled:
-            # If the filled order is a hanging order, do nothing
-            if order_id in self.hanging_order_ids:
-                #self.log_with_clock(
-                    #logging.INFO,
-                    #f"({self.trading_pair}) Hanging maker buy order {order_id} "
-                    #f"({limit_order_record.quantity} {limit_order_record.base_currency} @ "
-                    #f"{limit_order_record.price} {limit_order_record.quote_currency}) has been completely filled."
-                #)
-                boughtprice = int(str(limit_order_record.price * 1000000000000)[:4])
-                self.notify_hb_app(
-                    f"Bought {round(limit_order_record.quantity, 1)} @ "
-                    f"{boughtprice}"
-                )
-                return
-
         # delay order creation by filled_order_dalay (in seconds)
         self._create_timestamp = self._current_timestamp + self._filled_order_delay
         self._cancel_timestamp = min(self._cancel_timestamp, self._create_timestamp)
@@ -1079,21 +1063,6 @@ cdef class PureMarketMakingStrategy(StrategyBase):
         if limit_order_record is None:
             return
         active_buy_ids = [x.client_order_id for x in self.active_orders if x.is_buy]
-        if self._hanging_orders_enabled:
-            # If the filled order is a hanging order, do nothing
-            if order_id in self.hanging_order_ids:
-                #self.log_with_clock(
-                    #logging.INFO,
-                    #f"({self.trading_pair}) Hanging maker sell order {order_id} "
-                    #f"({limit_order_record.quantity} {limit_order_record.base_currency} @ "
-                    #f"{limit_order_record.price} {limit_order_record.quote_currency}) has been completely filled."
-                #)
-                soldprice = int(str(limit_order_record.price * 1000000000000)[:4])
-                self.notify_hb_app(
-                    f"Sold {round(limit_order_record.quantity, 1)} @ "
-                    f"{soldprice}"
-                )
-                return
 
         # delay order creation by filled_order_dalay (in seconds)
         self._create_timestamp = self._current_timestamp + self._filled_order_delay
